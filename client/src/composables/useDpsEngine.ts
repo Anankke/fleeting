@@ -4,7 +4,7 @@
  * Maintains a sliding window of combat events and computes:
  *  - per-category DPS/rates (dpsOut, dpsIn, logiOut, logiIn, capTransfered,
  *    capRecieved, capDamageOut, capDamageIn, mined)
- *  - breakdown[] — top entries by amount with pilot, weapon, ship, hitQuality, occurredAt
+ *  - breakdown[] — top entries by amount with pilot, weapon, ship, hitQualityDistribution, occurredAt
  *  - hitQualityDistribution — counts per qualifier in current window
  *  - percentiles (p50, p90, p95, p99, avg, median) for dpsOut hits in current window
  *
@@ -12,17 +12,19 @@
  */
 
 import { ref, computed, type Ref } from 'vue';
-import type { LogEntry, Category, HitQuality } from '../lib/logRegex';
+import type { LogEntry, Category } from '../lib/logRegex';
 import { emptyDistribution } from '../lib/hitQuality';
 
 export interface BreakdownEntry {
-  pilotName:   string;
-  weaponType:  string;
-  shipType:    string;
-  amount:      number;
-  category:    Category;
-  hitQuality:  HitQuality | null;
-  occurredAt:  string;
+  pilotName:              string;
+  weaponType:             string;
+  shipType:               string;
+  targetName:             string;
+  amount:                 number;  // total damage/repair in the window for this distinct group
+  hits:                   number;  // number of hits contributing to this group
+  category:               Category;
+  hitQualityDistribution: ReturnType<typeof emptyDistribution>; // counts per quality tier for this group
+  occurredAt:             string;                              // most recent occurrence in the group
 }
 
 export interface Percentiles {
@@ -92,7 +94,9 @@ export function useDpsEngine(windowSecondsRef?: Ref<number>) {
     };
     const dist = emptyDistribution();
     const dpsOutAmounts: number[] = [];
-    const breakdown: BreakdownEntry[] = [];
+    // Group hits by distinct (pilotName, weaponType, shipType, category, targetName)
+    // to avoid storing every individual hit while still representing per-group totals.
+    const groupMap = new Map<string, BreakdownEntry>();
 
     for (const { entry } of buffer.value) {
       sums[entry.category] += entry.amount;
@@ -100,19 +104,32 @@ export function useDpsEngine(windowSecondsRef?: Ref<number>) {
         dist[entry.hitQuality]++;
         dpsOutAmounts.push(entry.amount);
       }
-      breakdown.push({
-        pilotName:  entry.pilotName,
-        weaponType: entry.weaponType,
-        shipType:   entry.shipType,
-        amount:     entry.amount,
-        category:   entry.category,
-        hitQuality: entry.hitQuality,
-        occurredAt: entry.occurredAt,
-      });
+      const key = `${entry.pilotName}\x00${entry.weaponType}\x00${entry.shipType}\x00${entry.category}\x00${entry.targetName}`;
+      const existing = groupMap.get(key);
+      if (existing) {
+        existing.amount    += entry.amount;
+        existing.hits      += 1;
+        existing.occurredAt = entry.occurredAt;
+        if (entry.hitQuality) existing.hitQualityDistribution[entry.hitQuality]++;
+      } else {
+        const groupDist = emptyDistribution();
+        if (entry.hitQuality) groupDist[entry.hitQuality]++;
+        groupMap.set(key, {
+          pilotName:              entry.pilotName,
+          weaponType:             entry.weaponType,
+          shipType:               entry.shipType,
+          targetName:             entry.targetName,
+          amount:                 entry.amount,
+          hits:                   1,
+          category:               entry.category,
+          hitQualityDistribution: groupDist,
+          occurredAt:             entry.occurredAt,
+        });
+      }
     }
 
-    // Sort breakdown by amount desc, keep top 100
-    breakdown.sort((a, b) => b.amount - a.amount);
+    // Sort grouped breakdown by total amount desc, keep top 100
+    const breakdown = [...groupMap.values()].sort((a, b) => b.amount - a.amount);
     if (breakdown.length > 100) breakdown.length = 100;
 
     const percentiles = computePercentiles(dpsOutAmounts);

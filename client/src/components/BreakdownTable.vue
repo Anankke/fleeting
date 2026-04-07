@@ -10,20 +10,22 @@
     sort-field="amount"
     :sort-order="-1"
   >
-    <Column field="target"     header="Target"   sortable style="min-width:120px" />
-    <Column field="weapon"     header="Weapon"   sortable style="min-width:140px" />
-    <Column field="shipName"   header="Ship"     sortable style="min-width:100px" />
-    <Column field="amount"     header="Damage"   sortable style="min-width:90px">
-      <template #body="{ data }">{{ fmtNum(data.amount) }}</template>
-    </Column>
-    <Column field="hitQuality" header="Quality"  sortable style="min-width:100px">
+    <Column field="pilotName"  header="Pilot"    sortable style="min-width:120px" />
+    <Column field="targetName" header="Target"   sortable style="min-width:120px" />
+    <Column field="weaponType" header="Weapon"   sortable style="min-width:140px" />
+    <Column field="shipType"   header="Ship"     sortable style="min-width:100px" />
+    <Column field="category"   header="Category" sortable style="min-width:100px">
       <template #body="{ data }">
         <Tag
-          :value="data.hitQuality"
-          :style="{ background: hqColor(data.hitQuality), color: '#fff', fontSize: '0.75rem' }"
+          :value="data.category"
+          :style="{ background: CATEGORY_COLOR[data.category] ?? '#555', color: '#fff', fontSize: '0.75rem' }"
         />
       </template>
     </Column>
+    <Column field="amount"     header="Amount"   sortable style="min-width:90px">
+      <template #body="{ data }">{{ fmtNum(data.amount) }}</template>
+    </Column>
+    <Column field="hits"       header="Hits"     sortable style="min-width:60px" />
   </DataTable>
 </template>
 
@@ -31,15 +33,30 @@
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Tag from 'primevue/tag';
-import { HIT_QUALITY_COLOR } from '@/lib/hitQuality';
+import type { Category } from '@/lib/logRegex';
 
 export interface BreakdownRow {
-  target: string;
-  weapon: string;
-  shipName: string;
-  amount: number;
-  hitQuality: string;
+  pilotName:              string;
+  targetName:             string;
+  weaponType:             string;
+  shipType:               string;
+  category:               Category;
+  amount:                 number;
+  hits:                   number;
+  hitQualityDistribution: Record<string, number>;
 }
+
+const CATEGORY_COLOR: Record<string, string> = {
+  dpsOut:       '#c0392b',
+  dpsIn:        '#e74c3c',
+  logiOut:      '#27ae60',
+  logiIn:       '#2ecc71',
+  capTransfered:'#2980b9',
+  capRecieved:  '#3498db',
+  capDamageOut: '#8e44ad',
+  capDamageIn:  '#9b59b6',
+  mined:        '#d4ac0d',
+};
 
 defineProps<{ rows: BreakdownRow[] }>();
 
@@ -48,7 +65,6 @@ function fmtNum(n: number) {
   if (n >= 1_000)     return (n / 1_000).toFixed(1) + 'K';
   return String(n);
 }
-function hqColor(hq: string) { return HIT_QUALITY_COLOR[hq] ?? '#555'; }
 </script>
 
 <style scoped>

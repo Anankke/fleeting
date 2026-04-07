@@ -16,6 +16,7 @@ import { exchangeEveToken } from './auth.js';
 import { getFleetMembers } from './esi.js';
 import { insertPresenceBatch, touchFleetMembers } from '../db/queries/members.js';
 import { getOpenFleets } from '../db/queries/fleets.js';
+import { activeFleetTrackers, fleetTrackerPollsTotal } from './metrics.js';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -47,6 +48,7 @@ export function startTracking(
   );
 
   activeTrackers.set(fleetSessionId, { timer, fcCharacterId, eveFleetId, oidcAccessToken });
+  activeFleetTrackers.set(activeTrackers.size);
 
   // Immediate first poll
   poll(fleetSessionId, fcCharacterId, eveFleetId, oidcAccessToken).catch(console.error);
@@ -58,6 +60,7 @@ export function stopTracking(fleetSessionId: string) {
   if (!tracker) return;
   clearInterval(tracker.timer);
   activeTrackers.delete(fleetSessionId);
+  activeFleetTrackers.set(activeTrackers.size);
 }
 
 async function poll(
@@ -88,8 +91,10 @@ async function poll(
 
     await insertPresenceBatch(records);
     await touchFleetMembers(fleetSessionId, members.map((m: { character_id: number }) => m.character_id));
+    fleetTrackerPollsTotal.inc({ result: 'success' });
   } catch (err: unknown) {
     const status = (err as { status?: number }).status;
+    fleetTrackerPollsTotal.inc({ result: 'error' });
     if (status === 404) {
       console.warn(`[memberTracker] Fleet ${fleetSessionId} not found on ESI — stopping tracker`);
       stopTracking(fleetSessionId);

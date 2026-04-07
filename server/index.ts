@@ -17,6 +17,8 @@ import historyRoutes from './routes/history.js';
 
 import { startRetentionJob } from './lib/retentionJob.js';
 import { resumeOpenFleets }  from './lib/memberTracker.js';
+import { registry }          from './lib/metrics.js';
+import { loadRateLimitGroups } from './lib/esiRateLimiter.js';
 
 // trustProxy: 1 trusts exactly one hop (the immediate reverse-proxy, e.g. Nginx).
 // Using `true` would trust any X-Forwarded-For header, enabling IP spoofing that
@@ -59,8 +61,21 @@ async function start() {
   await app.register(warRoutes);
   await app.register(historyRoutes);
 
+  // Prometheus metrics endpoint — no auth; restrict via nginx/firewall in prod.
+  app.get('/metrics', async (_req, reply) => {
+    reply
+      .header('Content-Type', registry.contentType)
+      .send(await registry.metrics());
+  });
+
   startRetentionJob();
   await resumeOpenFleets();
+
+  // Fetch ESI OpenAPI spec to populate per-group rate-limit token buckets.
+  // Errors here are non-fatal (rate-limit tracking will be a no-op until resolved).
+  await loadRateLimitGroups().catch((err: unknown) =>
+    console.warn('[startup] ESI OpenAPI spec load failed — rate-limit throttling disabled:', (err as Error).message),
+  );
 
   await app.listen({ port: Number(process.env.PORT) || 3000, host: '0.0.0.0' });
 }

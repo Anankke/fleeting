@@ -48,8 +48,23 @@ async function main() {
   try {
     await downloadZip(SDE_ZIP_URL, TMP_ZIP);
 
-    console.log('[fetchSDE] Extracting types.jsonl...');
+    console.log('[fetchSDE] Extracting groups.jsonl and types.jsonl...');
     const zip = new AdmZip(TMP_ZIP);
+
+    // Build groupID → categoryID map from groups.jsonl
+    const groupsEntry = zip.getEntry('groups.jsonl');
+    if (!groupsEntry) throw new Error('groups.jsonl not found in SDE zip');
+    const groupCategoryMap = new Map();
+    for (const line of groupsEntry.getData().toString('utf8').split('\n')) {
+      if (!line.trim()) continue;
+      let g;
+      try { g = JSON.parse(line); } catch { continue; }
+      const gId  = g._key ?? g.groupID;
+      const catId = g.categoryID ?? g.category_id ?? null;
+      if (gId != null && catId != null) groupCategoryMap.set(Number(gId), Number(catId));
+    }
+    console.log(`[fetchSDE] Loaded ${groupCategoryMap.size} group→category mappings.`);
+
     const entry = zip.getEntry('types.jsonl');
     if (!entry) throw new Error('types.jsonl not found in SDE zip');
 
@@ -68,11 +83,12 @@ async function main() {
       }
 
       // SDE JSONL format uses _key for integer-keyed dictionaries
-      const typeId   = record._key ?? record.typeID;
-      const name     = record.name?.en ?? record.name ?? null;
-      const groupId  = record.groupID ?? record.group_id ?? null;
-      const catId    = record.categoryID ?? record.category_id ?? null;
+      // types.jsonl does NOT include categoryID — look it up via groupID → groups.jsonl
+      const typeId    = record._key ?? record.typeID;
+      const name      = record.name?.en ?? record.name ?? null;
+      const groupId   = record.groupID ?? record.group_id ?? null;
       const published = record.published ?? true;
+      const catId     = groupId != null ? groupCategoryMap.get(Number(groupId)) ?? null : null;
 
       if (!typeId || !name || !groupId || catId !== CATEGORY_SHIP || !published) continue;
 

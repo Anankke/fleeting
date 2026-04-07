@@ -37,6 +37,7 @@ export interface LogEntry {
   pilotName:   string;
   weaponType:  string;
   shipType:    string;
+  targetName:  string;
   hitQuality:  HitQuality | null;
   occurredAt:  string; // ISO timestamp
 }
@@ -146,10 +147,10 @@ const LANG_DIRECTION_WORDS: Record<string, DirectionWords> = {
   },
 };
 
-// ── Amount + pilot + weapon + ship extraction ─────────────────────────────────
+// ── Amount + pilot + weapon + ship + target extraction ───────────────────────
 // Captures the bold amount from log lines like: <b>350</b>
 const AMOUNT_RE  = /<b>(\d+)<\/b>/;
-// Pilot name in bold after direction keyword   <b>Foo Bar</b>
+// Pilot/target names appear in bold: <b>Foo Bar</b>
 const PILOT_RE   = /<b>([^<]+)<\/b>/g;
 // Weapon in square brackets                    [Warrior II]
 const WEAPON_RE  = /\[([^\]]+)\]/;
@@ -172,7 +173,7 @@ export function parseLine(line: string): LogEntry | null {
   if (isMining) {
     const amount = extractAmount(line);
     if (amount === null) return null;
-    return { category: 'mined', amount, pilotName: '', weaponType: '', shipType: '', hitQuality: null, occurredAt };
+    return { category: 'mined', amount, pilotName: '', weaponType: '', shipType: '', targetName: '', hitQuality: null, occurredAt };
   }
 
   // Hit quality (English only)
@@ -182,11 +183,12 @@ export function parseLine(line: string): LogEntry | null {
   const amount = extractAmount(line);
   if (amount === null) return null;
 
-  const { pilotName, weaponType, shipType } = extractActors(line);
   const category = detectCategory(line);
   if (!category) return null;
 
-  return { category, amount, pilotName, weaponType, shipType, hitQuality, occurredAt };
+  const { pilotName, weaponType, shipType, targetName } = extractActors(line, category);
+
+  return { category, amount, pilotName, weaponType, shipType, targetName, hitQuality, occurredAt };
 }
 
 function extractAmount(line: string): number | null {
@@ -194,16 +196,26 @@ function extractAmount(line: string): number | null {
   return m ? parseInt(m[1], 10) : null;
 }
 
-function extractActors(line: string): { pilotName: string; weaponType: string; shipType: string } {
+function extractActors(
+  line: string,
+  category: Category,
+): { pilotName: string; weaponType: string; shipType: string; targetName: string } {
   const boldMatches = [...line.matchAll(PILOT_RE)].map((m) => m[1]);
-  // First bold after amount is pilot, rest ignored for simple extraction
-  const pilotName  = boldMatches[1] ?? boldMatches[0] ?? '';
+  // boldMatches[0] = amount (digits), boldMatches[1] = first name in line
+  // For outgoing events the order is: amount → target → pilot (via weapon)
+  // For incoming events the order is: amount → attacker (pilot)
+  const isOutgoing = category === 'dpsOut' || category === 'logiOut' ||
+    category === 'capTransfered' || category === 'capDamageOut';
+  const firstName  = boldMatches[1] ?? '';
+  const secondName = boldMatches[2] ?? '';
+  const pilotName  = isOutgoing ? secondName || firstName : firstName;
+  const targetName = isOutgoing ? firstName : '';
   const weaponMatch = WEAPON_RE.exec(line);
   const weaponType  = weaponMatch ? weaponMatch[1] : '';
   // Ship type often bracketed after weapon: [ship] — second bracket
   const allBrackets = line.match(/\[([^\]]+)\]/g) ?? [];
   const shipType    = allBrackets[1]?.replace(/\[|\]/g, '') ?? '';
-  return { pilotName, weaponType, shipType };
+  return { pilotName, weaponType, shipType, targetName };
 }
 
 function detectCategory(line: string): Category | null {

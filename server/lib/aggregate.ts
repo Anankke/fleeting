@@ -8,7 +8,14 @@ type NumericField = (typeof NUMERIC_FIELDS)[number];
 const MAX_BREAKDOWN_ENTRIES = 20;
 
 export interface BreakdownEntry {
-  amount: number;
+  pilotName?:  string;
+  weaponType?: string;
+  shipType?:   string;
+  targetName?: string;
+  category?:   string;
+  amount:      number;
+  hits?:       number;
+  hitQuality?: string | null;
   [key: string]: unknown;
 }
 
