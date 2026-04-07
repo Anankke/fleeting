@@ -1,0 +1,68 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-peld}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-peld}
+      POSTGRES_DB: ${POSTGRES_DB:-peld}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./server/db/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-peld}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  cache:
+    image: memcached:1.6-alpine
+    restart: unless-stopped
+    command: memcached -m 256
+    ports:
+      - "11211:11211"
+
+  app:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_started
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      DATABASE_URL: postgres://${POSTGRES_USER:-peld}:${POSTGRES_PASSWORD:-peld}@db:5432/${POSTGRES_DB:-peld}
+      MEMCACHED_HOST: cache
+      MEMCACHED_PORT: 11211
+      SESSION_SECRET: ${SESSION_SECRET}
+      OIDC_ISSUER: ${OIDC_ISSUER}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI}
+      ESI_BASE_URL: https://esi.evetech.net
+      NCHAN_PUB_URL: http://nchan/pub/fleet
+      PORT: 3000
+    ports:
+      - "3000:3000"
+
+  nchan:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+    volumes:
+      - ./client/dist:/usr/share/nginx/html:ro
+
+volumes:
+  pgdata:
