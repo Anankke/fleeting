@@ -1,104 +1,96 @@
 /**
  * scripts/fetchSDE.mjs
  *
- * Pre-build script: downloads the EVE SDE ship type data from Fuzzwork
- * and generates client/src/lib/shipTypes.ts.
+ * Pre-build script: downloads the official EVE Online Static Data Export,
+ * extracts types.jsonl, and generates client/src/lib/shipTypes.ts.
+ *
+ * Data source: https://developers.eveonline.com/static-data
+ * Automation URL: https://developers.eveonline.com/static-data/eve-online-static-data-latest-jsonl.zip
  *
  * Usage: node scripts/fetchSDE.mjs
  */
 
-import { writeFileSync } from 'fs';
+import { writeFileSync, createWriteStream, existsSync, unlinkSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { createInterface } from 'readline';
+import { Readable } from 'stream';
+import AdmZip from 'adm-zip';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const FUZZWORK_CSV =
-  'https://www.fuzzwork.co.uk/dump/latest/invTypes.csv.bz2';
+const SDE_ZIP_URL =
+  'https://developers.eveonline.com/static-data/eve-online-static-data-latest-jsonl.zip';
 
-// Alternative: ESI SDE endpoint (simpler, no bzip2 decompression needed)
-const ESI_TYPES_URL = 'https://esi.evetech.net/v1/universe/types/?page=';
+const OUT_FILE    = resolve(__dirname, '../src/lib/shipTypes.ts');
+const TMP_ZIP     = resolve(__dirname, '../../.sde-tmp.zip');
 
-const OUT_FILE = resolve(__dirname, '../src/lib/shipTypes.ts');
-
-// Ship category IDs that correspond to ships (6 = Ships)
+// Ship category ID in EVE SDE
 const CATEGORY_SHIP = 6;
 
-async function fetchAllTypeIds() {
-  const page1Res = await fetch(`${ESI_TYPES_URL}1`);
-  const totalPages = parseInt(page1Res.headers.get('X-Pages') ?? '1', 10);
-  const page1 = await page1Res.json();
+async function downloadZip(url, dest) {
+  console.log('[fetchSDE] Downloading SDE zip from', url);
+  const res = await fetch(url, { redirect: 'follow' });
+  if (!res.ok) throw new Error(`HTTP ${res.status} downloading SDE`);
 
-  const allIds = [...page1];
-  const pages = [];
-  for (let p = 2; p <= Math.min(totalPages, 50); p++) {
-    pages.push(p);
-  }
-
-  const chunks = [];
-  // Fetch in batches of 5 concurrent requests
-  while (pages.length) {
-    const batch = pages.splice(0, 5);
-    const results = await Promise.all(
-      batch.map((p) =>
-        fetch(`${ESI_TYPES_URL}${p}`)
-          .then((r) => r.json())
-          .catch(() => []),
-      ),
-    );
-    for (const r of results) allIds.push(...r);
-  }
-  return allIds;
-}
-
-async function fetchTypeInfo(typeId) {
-  const res = await fetch(
-    `https://esi.evetech.net/v3/universe/types/${typeId}/?language=en`,
-  );
-  if (!res.ok) return null;
-  return res.json();
+  const writer = createWriteStream(dest);
+  const reader = Readable.fromWeb(res.body);
+  await new Promise((resolve, reject) => {
+    reader.pipe(writer);
+    writer.on('finish', resolve);
+    writer.on('error', reject);
+    reader.on('error', reject);
+  });
+  console.log('[fetchSDE] Download complete.');
 }
 
 async function main() {
-  console.log('[fetchSDE] Fetching all type IDs from ESI...');
-  let allIds;
   try {
-    allIds = await fetchAllTypeIds();
-  } catch (err) {
-    console.warn('[fetchSDE] ESI fetch failed, keeping existing shipTypes.ts:', err.message);
-    return;
-  }
+    await downloadZip(SDE_ZIP_URL, TMP_ZIP);
 
-  console.log(`[fetchSDE] Total type IDs: ${allIds.length}. Filtering ships...`);
+    console.log('[fetchSDE] Extracting types.jsonl...');
+    const zip = new AdmZip(TMP_ZIP);
+    const entry = zip.getEntry('types.jsonl');
+    if (!entry) throw new Error('types.jsonl not found in SDE zip');
 
-  const entries = [];
-  let processed = 0;
+    const jsonlContent = entry.getData().toString('utf8');
+    const lines = jsonlContent.split('\n').filter((l) => l.trim());
 
-  // Process in batches to avoid hammering ESI
-  const BATCH = 20;
-  for (let i = 0; i < allIds.length; i += BATCH) {
-    const batch = allIds.slice(i, i + BATCH);
-    const results = await Promise.all(batch.map((id) => fetchTypeInfo(id).catch(() => null)));
-    for (const info of results) {
-      if (!info) continue;
-      if (info.category_id !== CATEGORY_SHIP) continue;
-      entries.push([info.type_id, { name: info.name, groupId: info.group_id }]);
+    console.log(`[fetchSDE] Parsing ${lines.length} type records...`);
+
+    const entries = [];
+    for (const line of lines) {
+      let record;
+      try {
+        record = JSON.parse(line);
+      } catch {
+        continue;
+      }
+
+      // SDE JSONL format uses _key for integer-keyed dictionaries
+      const typeId   = record._key ?? record.typeID;
+      const name     = record.name?.en ?? record.name ?? null;
+      const groupId  = record.groupID ?? record.group_id ?? null;
+      const catId    = record.categoryID ?? record.category_id ?? null;
+      const published = record.published ?? true;
+
+      if (!typeId || !name || !groupId || catId !== CATEGORY_SHIP || !published) continue;
+
+      entries.push([typeId, { name: String(name), groupId: Number(groupId) }]);
     }
-    processed += batch.length;
-    if (processed % 1000 === 0) console.log(`[fetchSDE]  ${processed}/${allIds.length}`);
-  }
 
-  console.log(`[fetchSDE] Found ${entries.length} ship types. Writing ${OUT_FILE}...`);
+    console.log(`[fetchSDE] Found ${entries.length} published ship types. Writing ${OUT_FILE}...`);
 
-  const lines = entries
-    .map(([id, { name, groupId }]) => {
-      const safeName = name.replace(/'/g, "\\'");
-      return `  [${id}, { name: '${safeName}', groupId: ${groupId} }],`;
-    })
-    .join('\n');
+    const bodyLines = entries
+      .map(([id, { name, groupId }]) => {
+        const safeName = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        return `  [${id}, { name: '${safeName}', groupId: ${groupId} }],`;
+      })
+      .join('\n');
 
-  const content = `/**
+    const content = `/**
  * shipTypes.ts — AUTO-GENERATED by scripts/fetchSDE.mjs
+ * Source: EVE Online Static Data Export (developers.eveonline.com/static-data)
  * Do not edit by hand.
  */
 
@@ -109,14 +101,17 @@ export interface ShipType {
 
 // @generated
 const SHIP_TYPES_DATA: [number, ShipType][] = [
-${lines}
+${bodyLines}
 ];
 
 export const shipTypes: ReadonlyMap<number, ShipType> = new Map(SHIP_TYPES_DATA);
 `;
 
-  writeFileSync(OUT_FILE, content, 'utf8');
-  console.log('[fetchSDE] Done.');
+    writeFileSync(OUT_FILE, content, 'utf8');
+    console.log('[fetchSDE] Done.');
+  } finally {
+    if (existsSync(TMP_ZIP)) unlinkSync(TMP_ZIP);
+  }
 }
 
 main().catch((err) => {

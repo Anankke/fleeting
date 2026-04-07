@@ -62,12 +62,14 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import Select from 'primevue/select';
 import InputNumber from 'primevue/inputnumber';
 import Toast from 'primevue/toast';
 import { useToast } from 'primevue/usetoast';
 import { api, getMe, type MeResponse } from '@/api/client';
+import { clearMeCache } from '@/router';
 import { useLogReader } from '@/composables/useLogReader';
 import { useDpsEngine } from '@/composables/useDpsEngine';
 import DpsChart from '@/components/DpsChart.vue';
@@ -75,6 +77,7 @@ import StatsStrip from '@/components/StatsStrip.vue';
 import BreakdownTable from '@/components/BreakdownTable.vue';
 import HitQualityBar from '@/components/HitQualityBar.vue';
 
+const router = useRouter();
 const toast  = useToast();
 const me     = ref<MeResponse | null>(null);
 const selectedCharId = ref<number | null>(null);
@@ -144,7 +147,7 @@ watch(selectedCharId, async (charId) => {
 });
 
 function logout() {
-  api.post('/auth/logout', {}).then(() => { window.location.href = '/login.html'; });
+  api.post('/auth/logout', {}).then(() => { clearMeCache(); router.push('/login'); });
 }
 
 onMounted(async () => {
@@ -152,7 +155,8 @@ onMounted(async () => {
     me.value = await getMe();
     if (me.value.characters.length) selectedCharId.value = me.value.characters[0].characterId;
   } catch {
-    window.location.href = '/login.html';
+    clearMeCache();
+    router.push('/login');
   }
 });
 

@@ -50,13 +50,16 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Toast from 'primevue/toast';
 import { api } from '@/api/client';
+import { clearMeCache } from '@/router';
 import FleetReplayView from './FleetReplayView.vue';
 
+const router         = useRouter();
 const fleets         = ref<any[]>([]);
 const totalFleets    = ref(0);
 const pageSize       = 20;
@@ -79,14 +82,15 @@ function fmtDate(iso: string) {
 }
 
 function logout() {
-  api.post('/auth/logout', {}).then(() => { window.location.href = '/login.html'; });
+  api.post('/auth/logout', {}).then(() => { clearMeCache(); router.push('/login'); });
 }
 
 onMounted(async () => {
   try {
     await api.get('/api/me');
   } catch {
-    window.location.href = '/login.html';
+    clearMeCache();
+    router.push('/login');
     return;
   }
   await loadFleets();

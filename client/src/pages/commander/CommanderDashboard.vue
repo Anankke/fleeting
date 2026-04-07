@@ -41,10 +41,12 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import Tag from 'primevue/tag';
 import Toast from 'primevue/toast';
 import { getMe, api, type MeResponse } from '@/api/client';
+import { clearMeCache } from '@/router';
 import { useFleetSSE } from '@/composables/useFleetSSE';
 import { useParticipation } from '@/composables/useParticipation';
 import MemberTable from '@/components/MemberTable.vue';
@@ -53,6 +55,7 @@ import StatsStrip from '@/components/StatsStrip.vue';
 import BreakdownTable from '@/components/BreakdownTable.vue';
 import HitQualityBar from '@/components/HitQualityBar.vue';
 
+const router = useRouter();
 const me   = ref<MeResponse | null>(null);
 const mode = ref<'fc' | 'war'>('fc');
 
@@ -105,7 +108,7 @@ async function discoverMyFleet() {
 }
 
 function logout() {
-  api.post('/auth/logout', {}).then(() => { window.location.href = '/login.html'; });
+  api.post('/auth/logout', {}).then(() => { clearMeCache(); router.push('/login'); });
 }
 
 onMounted(async () => {
@@ -114,7 +117,8 @@ onMounted(async () => {
     mode.value = me.value.roles.includes('war_commander') ? 'war' : 'fc';
     await discoverMyFleet();
   } catch {
-    window.location.href = '/login.html';
+    clearMeCache();
+    router.push('/login');
   }
 });
 </script>

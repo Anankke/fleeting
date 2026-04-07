@@ -5,16 +5,11 @@ export default defineConfig({
   plugins: [pluginVue()],
   source: {
     entry: {
-      pilot:     './src/pages/pilot/index.ts',
-      commander: './src/pages/commander/index.ts',
-      history:   './src/pages/history/index.ts',
-      login:     './src/pages/login/index.ts',
+      index: './src/main.ts',
     },
   },
   html: {
-    template({ entryName }) {
-      return `./src/pages/${entryName}/index.html`;
-    },
+    template: './index.html',
   },
   server: {
     proxy: {
