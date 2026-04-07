@@ -83,6 +83,7 @@ const me     = ref<MeResponse | null>(null);
 const selectedCharId = ref<number | null>(null);
 const windowSec = ref(60);
 const fleetInfo = ref<{ fleetId: string } | null>(null);
+const isOnline  = ref(false);
 
 const characterOptions = computed(() =>
   (me.value?.characters ?? []).map(c => ({ label: c.name, value: c.characterId })),
@@ -96,8 +97,21 @@ const { addEntries, snapshot: snap, reset } = useDpsEngine(windowSec);
 
 onEntries(entries => {
   addEntries(entries);
-  if (fleetInfo.value && selectedCharId.value) uploadSnapshot();
+  if (isOnline.value && fleetInfo.value && selectedCharId.value) uploadSnapshot();
 });
+
+// Online status polling — check every 60 s; gates all fleet endpoint calls
+let onlinePollTimer: ReturnType<typeof setInterval> | null = null;
+
+async function checkOnlineStatus() {
+  if (!selectedCharId.value) return;
+  try {
+    const data = await api.get<{ online: boolean }>(`/api/character/${selectedCharId.value}/online`);
+    isOnline.value = data.online;
+  } catch {
+    isOnline.value = false;
+  }
+}
 
 async function openLogs() {
   try {
@@ -111,7 +125,7 @@ async function openLogs() {
 let fleetPollTimer: ReturnType<typeof setInterval> | null = null;
 
 async function discoverFleet() {
-  if (!selectedCharId.value) return;
+  if (!selectedCharId.value || !isOnline.value) return;
   try {
     const data = await api.get(`/api/fleet/discover?characterId=${selectedCharId.value}`);
     fleetInfo.value = data.fleet ? { fleetId: data.fleet.id } : null;
@@ -124,7 +138,7 @@ async function discoverFleet() {
 let uploadTimer: ReturnType<typeof setInterval> | null = null;
 
 async function uploadSnapshot() {
-  if (!snap.value || !fleetInfo.value || !selectedCharId.value) return;
+  if (!snap.value || !fleetInfo.value || !selectedCharId.value || !isOnline.value) return;
   try {
     await api.post('/api/pilot/data', {
       characterId: selectedCharId.value,
@@ -139,11 +153,18 @@ async function uploadSnapshot() {
 watch(selectedCharId, async (charId) => {
   if (!charId) return;
   reset();
-  await discoverFleet();
+  isOnline.value = false;
+  fleetInfo.value = null;
+  // Clear old timers
+  if (onlinePollTimer) clearInterval(onlinePollTimer);
   if (uploadTimer) clearInterval(uploadTimer);
-  uploadTimer = setInterval(uploadSnapshot, 2000);
   if (fleetPollTimer) clearInterval(fleetPollTimer);
-  fleetPollTimer = setInterval(discoverFleet, 30_000);
+  // Check online first, then start fleet discovery
+  await checkOnlineStatus();
+  await discoverFleet();
+  onlinePollTimer = setInterval(checkOnlineStatus, 60_000);
+  uploadTimer     = setInterval(uploadSnapshot, 2000);
+  fleetPollTimer  = setInterval(discoverFleet, 30_000);
 });
 
 function logout() {
@@ -161,6 +182,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  if (onlinePollTimer) clearInterval(onlinePollTimer);
   if (uploadTimer) clearInterval(uploadTimer);
   if (fleetPollTimer) clearInterval(fleetPollTimer);
   stopLogs();

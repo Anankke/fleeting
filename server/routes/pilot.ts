@@ -5,6 +5,8 @@ import * as snapshotStore from '../store/snapshotStore.js';
 import type { PilotSnapshot } from '../lib/aggregate.js';
 import { publish } from '../lib/nchanPublisher.js';
 import { write } from '../lib/historyWriter.js';
+import { exchangeEveToken } from '../lib/auth.js';
+import { getCharacterOnlineStatus } from '../lib/esi.js';
 
 /** Numeric fields expected in the snapshot that must be finite numbers. */
 const NUMERIC_SNAPSHOT_FIELDS = [
@@ -32,6 +34,26 @@ function sanitizeSnapshot(raw: Record<string, unknown>): PilotSnapshot {
 }
 
 export default async function pilotRoutes(fastify: FastifyInstance) {
+  // GET /api/character/:id/online — proxy ESI online status for the character
+  fastify.get('/api/character/:id/online', { preHandler: requireAuth }, async (req, reply) => {
+    const params = req.params as { id: string };
+    const characterId = Number(params.id);
+    if (!Number.isInteger(characterId) || characterId <= 0) {
+      return reply.code(400).send({ error: 'Invalid characterId' });
+    }
+    const s = req.session as unknown as Record<string, unknown>;
+    const owned = await characterBelongsToUser(s['userId'] as string, characterId);
+    if (!owned) return reply.code(403).send({ error: 'Character does not belong to your account' });
+    try {
+      const token  = await exchangeEveToken(characterId, req.session);
+      const status = await getCharacterOnlineStatus(token, characterId);
+      reply.send({ online: status.online });
+    } catch {
+      // If ESI fails we conservatively report offline so fleet ops are skipped.
+      reply.send({ online: false });
+    }
+  });
+
   fastify.post('/api/pilot/data', { preHandler: requireAuth }, async (req, reply) => {
     const body = req.body as Record<string, unknown> | null;
     const { characterId, fleetSessionId, snapshot } = body ?? {};

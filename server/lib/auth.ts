@@ -160,7 +160,7 @@ export async function oidcLogin(req: FastifyRequest, reply: FastifyReply): Promi
   url.searchParams.set('response_type',          'code');
   url.searchParams.set('client_id',              CLIENT_ID);
   url.searchParams.set('redirect_uri',           REDIRECT_URI);
-  url.searchParams.set('scope',                  'openid accounts groups passthrough esi-fleets.read_fleet.v1 esi-fleets.write_fleet.v1');
+  url.searchParams.set('scope',                  'openid accounts groups passthrough esi-fleets.read_fleet.v1 esi-fleets.write_fleet.v1 esi-location.read_online.v1');
   url.searchParams.set('state',                  state);
   url.searchParams.set('code_challenge',         codeChallenge);
   url.searchParams.set('code_challenge_method',  'S256');

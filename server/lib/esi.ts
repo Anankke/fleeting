@@ -286,3 +286,21 @@ export async function getFleetMembers(
 export async function getCharacterInfo(characterId: number): Promise<CharacterInfo> {
   return esiGet<CharacterInfo>(`/characters/${characterId}/`);
 }
+
+export interface CharacterOnlineStatus {
+  online: boolean;
+  last_login?: string;
+  last_logout?: string;
+  logins?: number;
+}
+
+/**
+ * GET /characters/{character_id}/online/
+ * Requires a valid access token for the character.
+ */
+export async function getCharacterOnlineStatus(
+  accessToken: string,
+  characterId: number,
+): Promise<CharacterOnlineStatus> {
+  return esiGet<CharacterOnlineStatus>(`/characters/${characterId}/online/`, accessToken);
+}

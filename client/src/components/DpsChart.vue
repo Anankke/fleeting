@@ -7,14 +7,39 @@ import { ref, watch, onMounted, onUnmounted } from 'vue';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import type { DpsSnapshot } from '@/composables/useDpsEngine';
+import { HIT_QUALITY_COLOR, HIT_QUALITIES } from '@/lib/hitQuality';
 
 const props = defineProps<{
   snapshot: DpsSnapshot | null;
   windowSec: number;
 }>();
 
-const el = ref<HTMLDivElement | null>(null);
+const DEFAULT_STROKE = '#7eb8ff';
+const DEFAULT_FILL   = 'rgba(126,184,255,0.15)';
+
+/** Returns the color of the most frequently occurring hit quality, or the default. */
+function dominantColor(dist: Record<string, number>): { stroke: string; fill: string } {
+  let best: string | null = null;
+  let bestCount = 0;
+  for (const hq of HIT_QUALITIES) {
+    const c = dist[hq] ?? 0;
+    if (c > bestCount) { bestCount = c; best = hq; }
+  }
+  if (!best || bestCount === 0) return { stroke: DEFAULT_STROKE, fill: DEFAULT_FILL };
+  const hex = HIT_QUALITY_COLOR[best as keyof typeof HIT_QUALITY_COLOR];
+  // Parse hex to rgba for fill
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return { stroke: hex, fill: `rgba(${r},${g},${b},0.18)` };
+}
+
+const el  = ref<HTMLDivElement | null>(null);
 let chart: uPlot | null = null;
+
+// Mutable color state read by series stroke/fill functions each redraw
+let activeStroke = DEFAULT_STROKE;
+let activeFill   = DEFAULT_FILL;
 
 // Circular ring buffer of (timestamp, dps) pairs
 const MAX_POINTS = 600;
@@ -44,8 +69,8 @@ function initChart() {
       {},
       {
         label: 'DPS',
-        stroke: '#7eb8ff',
-        fill: 'rgba(126,184,255,0.15)',
+        stroke: () => activeStroke,
+        fill:   () => activeFill,
         width: 2,
       },
     ],
@@ -63,10 +88,15 @@ watch(() => props.snapshot, (snap) => {
   if (!snap) return;
   const ts = Date.now() / 1000;
   tsArr[head]  = ts;
-  dpsArr[head] = snap.totalDps;
+  dpsArr[head] = snap.dpsOut;
   head = (head + 1) % MAX_POINTS;
   if (count < MAX_POINTS) count++;
-  chart?.setData(buildData());
+  if (chart) {
+    const { stroke, fill } = dominantColor(snap.hitQualityDistribution);
+    activeStroke = stroke;
+    activeFill   = fill;
+    chart.setData(buildData());
+  }
 });
 
 const ro = new ResizeObserver(() => { if (el.value && chart) chart.setSize({ width: el.value.clientWidth, height: 180 }); });
