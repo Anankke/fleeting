@@ -6,12 +6,17 @@
 import { ref, watch, onMounted, onUnmounted } from 'vue';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
-import type { DpsSnapshot } from '@/composables/useDpsEngine';
 import { HIT_QUALITY_COLOR, HIT_QUALITIES } from '@/lib/hitQuality';
 
+/** Minimal duck-typed snapshot — works with DpsSnapshot and FleetAggregate alike. */
+export interface ChartSnapshot {
+  dpsOut: number;
+  hitQualityDistribution: Record<string, number>;
+}
+
 const props = defineProps<{
-  snapshot: DpsSnapshot | null;
-  windowSec: number;
+  snapshot: ChartSnapshot | null;
+  windowSec?: number;
 }>();
 
 const DEFAULT_STROKE = '#7eb8ff';
@@ -46,6 +51,16 @@ const MAX_POINTS = 600;
 const tsArr  = new Float64Array(MAX_POINTS);
 const dpsArr = new Float64Array(MAX_POINTS);
 let head = 0, count = 0;
+
+function clearBuffer() {
+  head = 0;
+  count = 0;
+  tsArr.fill(0);
+  dpsArr.fill(0);
+  if (chart) chart.setData([[], []]);
+}
+
+defineExpose({ clear: clearBuffer });
 
 function buildData(): uPlot.AlignedData {
   const n = Math.min(count, MAX_POINTS);
@@ -99,7 +114,10 @@ watch(() => props.snapshot, (snap) => {
   }
 });
 
-const ro = new ResizeObserver(() => { if (el.value && chart) chart.setSize({ width: el.value.clientWidth, height: 180 }); });
+const ro = new ResizeObserver((entries) => {
+  const width = entries[0]?.contentRect.width;
+  if (width && chart) chart.setSize({ width, height: 180 });
+});
 
 onMounted(() => {
   initChart();
@@ -113,5 +131,5 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.dps-chart { background: #141928; border: 1px solid #2a3050; border-radius: 8px; overflow: hidden; padding: 0.5rem; }
+.dps-chart { width: 100%; min-width: 0; background: #141928; border: 1px solid #2a3050; border-radius: 8px; overflow: hidden; padding: 0.5rem; }
 </style>

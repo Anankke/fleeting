@@ -3,6 +3,12 @@ import { pluginVue } from '@rsbuild/plugin-vue';
 
 export default defineConfig({
   plugins: [pluginVue()],
+  output: {
+    sourceMap: {
+      js: 'source-map',
+      css: true,
+    },
+  },
   source: {
     entry: {
       index: './src/main.ts',

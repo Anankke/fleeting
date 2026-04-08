@@ -1,14 +1,12 @@
 /**
  * logRegex.ts
  *
- * EVE Online combat log regex patterns for all 6 client languages supported by PELD.
+ * EVE Online combat log parsing based on PyEveLiveDPS patterns.
+ * Reference: https://github.com/ArtificialQualia/PyEveLiveDPS
  *
- * Log line format (all languages):
- *   [ YYYY.MM.DD HH:MM:SS ] ... (damage/logi/cap/mining info)
- *
- * Hit quality suffix appears as:
- *   "- (Wrecks|Smashes|Penetrates|Hits|Glances Off|Grazes|Misses)</font>"
- * This is ALWAYS in English regardless of client language.
+ * Log line format:
+ *   [ YYYY.MM.DD HH:MM:SS ] (combat) <colorTag><b>amount</b> ... direction ...
+ *       <b><color=0xffffffff>Actor[Corp (Ship)]</color></b><font size=10> - Weapon - Quality</font>
  */
 
 export type Category =
@@ -29,224 +27,267 @@ export type HitQuality =
   | 'Hits'
   | 'Glances Off'
   | 'Grazes'
-  | 'Misses';
+  | 'Misses'
+  | string; // allow raw untranslated strings from non-English clients
 
 export interface LogEntry {
-  category:    Category;
-  amount:      number;
-  pilotName:   string;
-  weaponType:  string;
-  shipType:    string;
-  targetName:  string;
-  hitQuality:  HitQuality | null;
-  occurredAt:  string; // ISO timestamp
+  category:   Category;
+  amount:     number;
+  /** The acting character: attacker for dpsIn/logiIn/capDamageIn, or the log owner for outgoing events. */
+  pilotName:  string;
+  weaponType: string;
+  /** The acting character's ship type. */
+  shipType:   string;
+  /** The receiving character: victim for dpsOut/logiOut, or the log owner for incoming events. */
+  targetName: string;
+  hitQuality: HitQuality | null;
+  occurredAt: string;
+  /** Character name whose log file this entry came from — always the log file owner. */
+  logOwner:   string;
 }
 
-// ── Hit qualifier (English-only, from <color> tags in log) ────────────────────
-// Must list 'Glances Off' before single-word entries.
-export const HIT_QUALITY_RE =
-  /- (Wrecks|Smashes|Penetrates|Hits|Glances Off|Grazes|Misses)<\/font>/i;
+// ── Log file header ───────────────────────────────────────────────────────────
+// Line 3 of the log file is "Listener: <name>" (language-specific prefix).
+export interface LogHeader { characterName: string; language: string; }
 
-// ── Timestamp ─────────────────────────────────────────────────────────────────
-const TS_RE = /\[ (\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}:\d{2}) \]/;
-
-function parseTs(raw: string): string {
-  // Convert "2024.05.01 18:23:41" → ISO "2024-05-01T18:23:41.000Z"
-  return raw.replace(/\./g, '-').replace(' ', 'T') + '.000Z';
-}
-
-// ── PELD regex patterns per language ──────────────────────────────────────────
-// Each language has its own patterns for each category.
-// Format: named capture groups "amount", "pilot", "weapon", "ship" where available.
-
-interface LangPattern {
-  re:       RegExp;
-  category: Category;
-}
-
-/** English patterns (PELD reference implementation) */
-const EN: LangPattern[] = [
-  // DPS Out: "(target) <amount> (via weapon [shipType])"  — or similar
-  { re: /\(combat\) <.*?> (\d+) <.*?> to <.*?>(.*?)<\/.*?> <\/.*?> - (.*?) - (.*?) \[/, category: 'dpsOut' },
-  { re: /\(combat\) <.*?> (\d+) <.*?> from <.*?>(.*?)<\/.*?> <\/.*?> - (.*?) - (.*?) \[/, category: 'dpsIn' },
-  { re: /\(combat\) <.*?> (\d+) <.*?> remote armor repaired to <.*?>(.*?)<\/.*?>/, category: 'logiOut' },
-  { re: /\(combat\) <.*?> (\d+) <.*?> remote armor repaired by <.*?>(.*?)<\/.*?>/, category: 'logiIn' },
-  { re: /\(combat\) <.*?> (\d+) <.*?> energy transferred to <.*?>(.*?)<\/.*?>/, category: 'capTransfered' },
-  { re: /\(combat\) <.*?> (\d+) <.*?> energy transferred from <.*?>(.*?)<\/.*?>/, category: 'capRecieved' },
-  { re: /\(combat\) <.*?> (\d+) <.*?> energy neutralized from <.*?>(.*?)<\/.*?>/, category: 'capDamageIn' },
-  { re: /\(combat\) <.*?> (\d+) <.*?> energy neutralized to <.*?>(.*?)<\/.*?>/, category: 'capDamageOut' },
-  { re: /\(mining\) <.*?> (\d+) <.*?> added to your ore hold/, category: 'mined' },
+const HEADER_PATTERNS: Array<{ lang: string; re: RegExp }> = [
+  { lang: 'english',  re: /^Listener:\s*(.+)/ },
+  { lang: 'russian',  re: /^Слушатель:\s*(.+)/ },
+  { lang: 'french',   re: /^Auditeur:\s*(.+)/ },
+  { lang: 'german',   re: /^Empfänger:\s*(.+)/ },
+  { lang: 'japanese', re: /^傍聴者:\s*(.+)/ },
+  { lang: 'chinese',  re: /^收听者:\s*(.+)/ },
 ];
 
-/**
- * A simplified universal parser that works on the raw HTML-annotated EVE log lines.
- *
- * EVE combat log lines contain HTML color tags. A typical damage OUT line looks like:
- *   (combat) <color=...><b>350</b> <color=...>to</color> <color=...><b>Foo Bar</b></color>
- *   [<color=...>Warrior II</color>] <color=...>- Hits</color>
- *
- * Rather than maintaining 6 full per-language regex sets (EVE log content is mostly
- * structured the same across languages), we use a keyword-based heuristic that
- * identifies the category from the surrounding direction keywords, then captures
- * amount, pilot, and weapon from the structured colour tags.
- *
- * This covers the 95%+ use-case. Full per-language support can be added by extending
- * LANG_DIRECTION_WORDS below.
- */
-
-interface DirectionWords {
-  toOut:   string[];  // "to" for outgoing damage/logi/cap
-  fromIn:  string[];  // "from" for incoming
-  repaired: string[];
-  transferred: string[];
-  neutralized: string[];
-}
-
-const LANG_DIRECTION_WORDS: Record<string, DirectionWords> = {
-  en: {
-    toOut:        ['to'],
-    fromIn:       ['from'],
-    repaired:     ['remote armor repaired to', 'remote shield boosted to', 'remote hull repaired to'],
-    transferred:  ['energy transferred to'],
-    neutralized:  ['energy neutralized to'],
-  },
-  ru: {
-    toOut:        ['\u043a\u043e\u043c\u0443'],   // кому
-    fromIn:       ['\u043e\u0442'],               // от
-    repaired:     ['\u0431\u0440\u043e\u043d\u044f \u043e\u0442\u0440\u0435\u043c\u043e\u043d\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u043e'],
-    transferred:  ['\u0435\u043d\u0435\u0440\u0433\u0438\u044f \u043f\u0435\u0440\u0435\u0434\u0430\u043d\u0430'],
-    neutralized:  ['\u043d\u0435\u0439\u0442\u0440\u0430\u043b\u0438\u0437\u043e\u0432\u0430\u043d\u0430'],
-  },
-  de: {
-    toOut:        ['an'],
-    fromIn:       ['von'],
-    repaired:     ['Rüstung repariert an'],
-    transferred:  ['Energie übergeben an'],
-    neutralized:  ['Energie neutralisiert an'],
-  },
-  fr: {
-    toOut:        ['sur'],
-    fromIn:       ['de'],
-    repaired:     ['armure réparée à distance sur'],
-    transferred:  ['énergie transférée sur'],
-    neutralized:  ['énergie neutralisée sur'],
-  },
-  ja: {
-    toOut:        ['\u3078'],    // へ
-    fromIn:       ['\u304b\u3089'],  // から
-    repaired:     ['\u30ea\u30e2\u30fc\u30c8\u30a2\u30fc\u30de\u30fc\u30ea\u30da\u30a2'],
-    transferred:  ['\u30a8\u30cd\u30eb\u30ae\u30fc\u8ee2\u9001'],
-    neutralized:  ['\u30a8\u30cd\u30eb\u30ae\u30fc\u30cb\u30e5\u30fc\u30c8\u30e9\u30e9\u30a4\u30ba'],
-  },
-  zh: {
-    toOut:        ['\u5230'],   // 到
-    fromIn:       ['\u6765\u81ea'],  // 来自
-    repaired:     ['\u8fdc\u7a0b\u88c5\u7532\u4fee\u590d'],
-    transferred:  ['\u80fd\u91cf\u8f6c\u79fb'],
-    neutralized:  ['\u80fd\u91cf\u4e2d\u548c'],
-  },
-};
-
-// ── Amount + pilot + weapon + ship + target extraction ───────────────────────
-// Captures the bold amount from log lines like: <b>350</b>
-const AMOUNT_RE  = /<b>(\d+)<\/b>/;
-// Pilot/target names appear in bold: <b>Foo Bar</b>
-const PILOT_RE   = /<b>([^<]+)<\/b>/g;
-// Weapon in square brackets                    [Warrior II]
-const WEAPON_RE  = /\[([^\]]+)\]/;
-
-/**
- * Parse a single raw EVE log line.
- * Returns a LogEntry or null if the line is not a recognised combat event.
- */
-export function parseLine(line: string): LogEntry | null {
-  const tsMatch = TS_RE.exec(line);
-  if (!tsMatch) return null;
-
-  const occurredAt = parseTs(tsMatch[1]);
-
-  // Must be a (combat) or (mining) line
-  const isCombat = line.includes('(combat)');
-  const isMining = line.includes('(mining)');
-  if (!isCombat && !isMining) return null;
-
-  if (isMining) {
-    const amount = extractAmount(line);
-    if (amount === null) return null;
-    return { category: 'mined', amount, pilotName: '', weaponType: '', shipType: '', targetName: '', hitQuality: null, occurredAt };
-  }
-
-  // Hit quality (English only)
-  const hqMatch = HIT_QUALITY_RE.exec(line);
-  const hitQuality = hqMatch ? (hqMatch[1] as HitQuality) : null;
-
-  const amount = extractAmount(line);
-  if (amount === null) return null;
-
-  const category = detectCategory(line);
-  if (!category) return null;
-
-  const { pilotName, weaponType, shipType, targetName } = extractActors(line, category);
-
-  return { category, amount, pilotName, weaponType, shipType, targetName, hitQuality, occurredAt };
-}
-
-function extractAmount(line: string): number | null {
-  const m = AMOUNT_RE.exec(line);
-  return m ? parseInt(m[1], 10) : null;
-}
-
-function extractActors(
-  line: string,
-  category: Category,
-): { pilotName: string; weaponType: string; shipType: string; targetName: string } {
-  const boldMatches = [...line.matchAll(PILOT_RE)].map((m) => m[1]);
-  // boldMatches[0] = amount (digits), boldMatches[1] = first name in line
-  // For outgoing events the order is: amount → target → pilot (via weapon)
-  // For incoming events the order is: amount → attacker (pilot)
-  const isOutgoing = category === 'dpsOut' || category === 'logiOut' ||
-    category === 'capTransfered' || category === 'capDamageOut';
-  const firstName  = boldMatches[1] ?? '';
-  const secondName = boldMatches[2] ?? '';
-  const pilotName  = isOutgoing ? secondName || firstName : firstName;
-  const targetName = isOutgoing ? firstName : '';
-  const weaponMatch = WEAPON_RE.exec(line);
-  const weaponType  = weaponMatch ? weaponMatch[1] : '';
-  // Ship type often bracketed after weapon: [ship] — second bracket
-  const allBrackets = line.match(/\[([^\]]+)\]/g) ?? [];
-  const shipType    = allBrackets[1]?.replace(/\[|\]/g, '') ?? '';
-  return { pilotName, weaponType, shipType, targetName };
-}
-
-function detectCategory(line: string): Category | null {
-  // Check all languages
-  for (const dw of Object.values(LANG_DIRECTION_WORDS)) {
-    // Logi
-    for (const kw of dw.repaired) {
-      if (line.toLowerCase().includes(kw.toLowerCase())) {
-        return line.toLowerCase().includes('from') || line.toLowerCase().includes('\u304b\u3089') || line.toLowerCase().includes('\u6765\u81ea')
-          ? 'logiIn' : 'logiOut';
-      }
-    }
-    // Cap transfer
-    for (const kw of dw.transferred) {
-      if (line.toLowerCase().includes(kw.toLowerCase())) {
-        return line.toLowerCase().includes('from') ? 'capRecieved' : 'capTransfered';
-      }
-    }
-    // Cap neutralization
-    for (const kw of dw.neutralized) {
-      if (line.toLowerCase().includes(kw.toLowerCase())) {
-        return line.toLowerCase().includes('from') ? 'capDamageIn' : 'capDamageOut';
-      }
-    }
-    // Damage direction
-    for (const kw of dw.toOut) {
-      if (line.toLowerCase().includes(` ${kw.toLowerCase()} `)) return 'dpsOut';
-    }
-    for (const kw of dw.fromIn) {
-      if (line.toLowerCase().includes(` ${kw.toLowerCase()} `)) return 'dpsIn';
+/** Parse the first ~512 bytes of a log file to get character name + language. */
+export function parseHeader(text: string): LogHeader | null {
+  for (const line of text.split('\n').slice(0, 8).map(l => l.trim())) {
+    for (const { lang, re } of HEADER_PATTERNS) {
+      const m = re.exec(line);
+      if (m) return { characterName: m[1].trim(), language: lang };
     }
   }
   return null;
+}
+
+// ── Shared primitives ─────────────────────────────────────────────────────────
+const TS_RE     = /\[ (\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}:\d{2}) \]/;
+const AMOUNT_RE = /<b>(\d+)<\/b>/;
+const MINING_RE = /\(mining\) .*?<[^>]*><[^>]*>(\d+)/;
+
+function parseTs(raw: string): string {
+  return raw.replace(/\./g, '-').replace(' ', 'T') + '.000Z';
+}
+
+// Hit quality — extracted from the trailing <font> tag in the log line.
+// EVE log format:  <font size=10><color=0x77ffffff> - WeaponType - HitQuality
+// (no closing </font> — the line simply ends after the quality string)
+// Strategy: anchor to <font>, skip optional inner tags (color etc.), consume
+// the weapon segment greedily so backtracking lands us on the LAST " - ",
+// then capture the quality. Lines with only one " - " (logi/cap/neut) don't
+// match, so hitQuality is correctly null for those events.
+export const HIT_QUALITY_RAW_RE = /<font[^>]*>(?:<[^>]*>)* - [^<\r\n]+ - ([^<\r\n]+?)\s*(?:<\/font>|[\r\n]|$)/;
+
+/** Canonical English quality strings in descending quality order. */
+export const CANONICAL_QUALITIES = [
+  'Wrecks', 'Smashes', 'Penetrates', 'Hits', 'Glances Off', 'Grazes', 'Misses',
+] as const;
+
+/**
+ * Map of known alternative spellings / translations → canonical English.
+ * Extend this table as needed for additional client languages.
+ */
+const QUALITY_MAP: Record<string, string> = {
+  // English (already canonical)
+  wrecks: 'Wrecks', smashes: 'Smashes', penetrates: 'Penetrates',
+  hits: 'Hits', 'glances off': 'Glances Off', grazes: 'Grazes', misses: 'Misses',
+  // Russian (approximate — adjust once confirmed from actual logs)
+  'уничтожает': 'Wrecks', 'разрушает': 'Smashes', 'пробивает': 'Penetrates',
+  'попадает': 'Hits', 'скользит': 'Glances Off', 'царапает': 'Grazes',
+  'промахивается': 'Misses',
+  // German
+  'vernichtet': 'Wrecks', 'zerschmettert': 'Smashes', 'durchdringt': 'Penetrates',
+  'trifft': 'Hits', 'streift': 'Glances Off', 'kratzt': 'Grazes',
+  'verfehlt': 'Misses',
+};
+
+/** Translate a raw quality string to its canonical form; falls back to raw value. */
+export function translateQuality(raw: string): string {
+  return QUALITY_MAP[raw.toLowerCase().trim()] ?? raw.trim();
+}
+
+// ── Category detection (real PELD patterns) ──────────────────────────────────
+// Specific phrases are ordered BEFORE generic direction keywords to avoid
+// false-positive matches (e.g. "remote armor repaired to" contains "to").
+
+// Logi: English phrases work in English-client logs.
+const RE_LOGI_OUT = /\(combat\) <[^>]+><b>\d+<\/b>.*?remote (?:armor|shield|hull) (?:repaired|boosted) to /;
+const RE_LOGI_IN  = /\(combat\) <[^>]+><b>\d+<\/b>.*?remote (?:armor|shield|hull) (?:repaired|boosted) by /;
+// Cap transfer
+const RE_CAP_OUT  = /\(combat\) <[^>]+><b>\d+<\/b>.*?remote capacitor transmitted to /;
+const RE_CAP_IN   = /\(combat\) <[^>]+><b>\d+<\/b>.*?remote capacitor transmitted by /;
+// Cap neut: distinguished by color code: ff7fffff=we neut (out), ffe57f7f=they neut us (in).
+const RE_NEUT_OUT = /\(combat\) <[^>]*ff7fffff><b>\d+<\/b>/;
+const RE_NEUT_IN  = /\(combat\) <[^>]*ffe57f7f><b>\d+<\/b>/;
+
+// Damage direction keywords per language (PELD-style ">keyword<" tag boundary matching).
+const DAMAGE_DIR: Record<string, { out: string; in: string }> = {
+  english:  { out: '>to<',      in: '>from<' },
+  russian:  { out: '>\u043d\u0430<',    in: '>\u0438\u0437<' },
+  french:   { out: '>\u00e0<',      in: '>de<' },
+  german:   { out: '>nach<',    in: '>von<' },
+  japanese: { out: '>\u5bfe\u8c61:<',  in: '>\u653b\u6483\u8005:<' },
+  chinese:  { out: '>\u5bf9<',      in: '>\u6765\u81ea<' },
+};
+
+function detectCategory(line: string, language = 'english'): Category | null {
+  if (RE_LOGI_OUT.test(line)) return 'logiOut';
+  if (RE_LOGI_IN.test(line))  return 'logiIn';
+  if (RE_CAP_OUT.test(line))  return 'capTransfered';
+  if (RE_CAP_IN.test(line))   return 'capRecieved';
+  if (RE_NEUT_OUT.test(line)) return 'capDamageOut';
+  if (RE_NEUT_IN.test(line))  return 'capDamageIn';
+  const dir = DAMAGE_DIR[language] ?? DAMAGE_DIR.english;
+  if (line.includes(dir.out)) return 'dpsOut';
+  if (line.includes(dir.in))  return 'dpsIn';
+  return null;
+}
+
+// ── Pilot / weapon extraction ─────────────────────────────────────────────────
+// The acting character's name appears in the log after <color=0xffffffff> (pure white).
+// Standard EVE overview format: PilotName[CorpTag (ShipType)]
+// Weapon appears after "</b> - " separator.
+//
+// Pattern translated directly from PELD's default pilotAndWeapon regex:
+//   (?:.*ffffffff>pilot[corp(ship)]</b> - weapon)
+export const DEFAULT_PILOT_WEAPON_RE =
+  /ffffffff>(?:<[^>]*>)*(?<pilot>[^([<\r\n]*)(?:.*?\((?<ship>[^)]*)\))?.*?<\/b>.*? - (?<weapon>[^-<\r\n]+?)(?= -|<)/s;
+
+/** Build a custom pilot+weapon regex from EVE overview settings YAML content.
+ *  Mirrors PyEveLiveDPS createOverviewRegex logic.
+ *  Returns null if the overview data is insufficient to build a valid pattern. */
+export function buildOverviewRegex(overview: {
+  shipLabelOrder: string[];
+  shipLabels: Array<[string, { state: number | boolean; pre: string; post: string; type: string | null }]>;
+}): RegExp | null {
+  function esc(s: string) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+  // Build a map from type→config.
+  const cfgByType = new Map<string, { state: number | boolean; pre: string; post: string; type: string | null }>();
+  for (const [typeName, cfg] of overview.shipLabels) {
+    // Use the first array element (type name) as the key when cfg.type is null
+    cfgByType.set(cfg.type ?? typeName, cfg);
+  }
+
+  let hasPilot  = false;
+  let hasWeapon = false;
+  let pat = '.*?ffffffff>';
+
+  for (const key of overview.shipLabelOrder) {
+    const cfg     = cfgByType.get(key);
+    const enabled = cfg ? (cfg.state === true || cfg.state === 1) : false;
+    const pre  = esc(cfg?.pre  ?? '');
+    const post = esc(cfg?.post ?? '');
+
+    if (key === 'pilot name') {
+      if (enabled) {
+        pat += `(?:${pre}(?:<[^>]*>)?(?<pilot>[^<]*)${post})`;
+        hasPilot = true;
+      } else {
+        pat += '(?:(?:<[^>]*>)?[^<]*)?';
+      }
+    } else if (key === 'ship type') {
+      if (enabled) {
+        pat += `(?:${pre}(?:<[^>]*>)?(?<ship>[^<]*)${post})?`;
+      }
+    } else if (['alliance', 'corporation', 'ship name'].includes(key)) {
+      if (enabled) pat += `(?:${pre}.*?${post})?`;
+    }
+  }
+
+  pat += '.*?<\\/b>.*? - (?<weapon>[^-<\\r\\n]+?)(?= -|<)';
+  hasWeapon = true;
+
+  if (!hasPilot || !hasWeapon) return null;
+
+  try {
+    return new RegExp(pat, 's');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Parse a single raw EVE log line.
+ *
+ * @param line          Raw text line from the EVE log file
+ * @param characterName Character who owns this log (from file header — see parseHeader)
+ * @param language      Client language of this log (from file header)
+ * @param pilotWeaponRe Optional custom regex built from the user's overview settings
+ */
+export function parseLine(
+  line: string,
+  characterName = '',
+  language = 'english',
+  pilotWeaponRe: RegExp = DEFAULT_PILOT_WEAPON_RE,
+): LogEntry | null {
+  const tsMatch = TS_RE.exec(line);
+  if (!tsMatch) return null;
+  const occurredAt = parseTs(tsMatch[1]);
+
+  const isMining = line.includes('(mining)');
+  const isCombat = line.includes('(combat)');
+  if (!isCombat && !isMining) return null;
+
+  if (isMining) {
+    const m = MINING_RE.exec(line);
+    if (!m) return null;
+    return { category: 'mined', amount: parseInt(m[1], 10), pilotName: characterName, weaponType: '', shipType: '', targetName: '', hitQuality: null, occurredAt, logOwner: characterName };
+  }
+
+  const amtMatch = AMOUNT_RE.exec(line);
+  if (!amtMatch) return null;
+  const amount = parseInt(amtMatch[1], 10);
+
+  const category = detectCategory(line, language);
+  if (!category) return null;
+
+  // Extract raw quality string and translate to canonical form
+  const hqRawMatch = HIT_QUALITY_RAW_RE.exec(line);
+  const hitQuality = hqRawMatch ? translateQuality(hqRawMatch[1]) : null;
+
+  // Try the (potentially overview-derived) regex first; fall back to default if needed
+  function extractGroups(re: RegExp) {
+    re.lastIndex = 0;
+    const match = re.exec(line);
+    return {
+      pilot:  (match?.groups?.pilot  ?? '').trim(),
+      ship:   (match?.groups?.ship   ?? '').trim(),
+      weapon: (match?.groups?.weapon ?? '').trim(),
+    };
+  }
+
+  let { pilot: otherActor, ship: shipType, weapon: weaponType } = extractGroups(pilotWeaponRe);
+
+  // If the overview regex yielded nothing useful, try the default
+  if (!otherActor && !weaponType && pilotWeaponRe !== DEFAULT_PILOT_WEAPON_RE) {
+    ({ pilot: otherActor, ship: shipType, weapon: weaponType } = extractGroups(DEFAULT_PILOT_WEAPON_RE));
+  }
+
+  // For outgoing events: we are the actor, the other party is the target.
+  // For incoming events: the other party is the actor, we are the target.
+  const isOutgoing = category === 'dpsOut' || category === 'logiOut' ||
+    category === 'capTransfered' || category === 'capDamageOut';
+
+  return {
+    category,
+    amount,
+    pilotName:  isOutgoing ? characterName : otherActor,
+    targetName: isOutgoing ? otherActor    : characterName,
+    weaponType,
+    shipType,
+    hitQuality,
+    occurredAt,
+    logOwner: characterName,
+  };
 }

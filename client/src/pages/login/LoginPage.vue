@@ -22,7 +22,7 @@ function login() {
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: #0a0e1a;
+  background: #0d0f14;
 }
 .login-card {
   display: flex;
@@ -30,13 +30,13 @@ function login() {
   align-items: center;
   gap: 1.5rem;
   padding: 3rem;
-  background: #141928;
-  border-radius: 12px;
-  border: 1px solid #2a3050;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-  color: #e0e8ff;
+  background: #13181f;
+  border-radius: 4px;
+  border: 1px solid #8a6e2e;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7);
+  color: #cfd9ee;
   text-align: center;
 }
-h1 { margin: 0; font-size: 2.5rem; letter-spacing: 2px; }
-p  { margin: 0; color: #8a9cc0; }
+h1 { margin: 0; font-size: 2.2rem; letter-spacing: 3px; text-transform: uppercase; color: #c8a84b; }
+p  { margin: 0; color: #5b6f8e; font-size: 0.9rem; letter-spacing: 0.04em; }
 </style>

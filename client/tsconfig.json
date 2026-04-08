@@ -6,11 +6,12 @@
     "strict": true,
     "jsx": "preserve",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["@types/uplot"],
+    "types": [],
+    "resolveJsonModule": true,
     "paths": {
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src/**/*", "scripts/**/*"],
+  "include": ["env.d.ts", "src/**/*", "scripts/**/*"],
   "exclude": ["node_modules", "dist"]
 }

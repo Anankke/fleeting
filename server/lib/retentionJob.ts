@@ -7,7 +7,9 @@
 
 import { query } from '../db/pg.js';
 
-const MS_PER_DAY = 86_400_000;
+const MS_PER_DAY               = 86_400_000;
+const RETENTION_STARTUP_DELAY_MS = parseInt(process.env.RETENTION_STARTUP_DELAY_MS ?? '60000',    10);
+const RETENTION_INTERVAL_MS      = parseInt(process.env.RETENTION_INTERVAL_MS      ?? '86400000', 10);
 
 interface RetentionConfig {
   fleet_session_id: string | null;
@@ -88,6 +90,6 @@ export async function runRetention() {
 export function startRetentionJob() {
   setTimeout(() => {
     runRetention().catch(console.error);
-    setInterval(() => runRetention().catch(console.error), MS_PER_DAY);
-  }, 60_000);
+    setInterval(() => runRetention().catch(console.error), RETENTION_INTERVAL_MS);
+  }, RETENTION_STARTUP_DELAY_MS);
 }

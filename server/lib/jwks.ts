@@ -79,8 +79,9 @@ export async function verifyJwt(
     try {
       const publicKey = await importJWK(jwk, header.alg ?? jwk.alg ?? 'RS256');
       const { payload } = await jwtVerify(token, publicKey, {
-        issuer:   options?.issuer,
-        audience: options?.audience,
+        issuer:         options?.issuer,
+        audience:       options?.audience,
+        clockTolerance: 30, // tolerate up to 30 s of clock skew
       });
       return payload;
     } catch (err) {

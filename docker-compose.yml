@@ -49,8 +49,19 @@ services:
       ESI_BASE_URL: https://esi.evetech.net
       NCHAN_PUB_URL: http://nchan/pub/fleet
       PORT: 3000
-    ports:
-      - "3000:3000"
+      # ── Tunable operational constants (all have safe defaults) ──
+      PILOT_TTL_S: ${PILOT_TTL_S:-15}
+      FLEET_AGG_TTL_S: ${FLEET_AGG_TTL_S:-5}
+      BREAKDOWN_MAX_ENTRIES: ${BREAKDOWN_MAX_ENTRIES:-20}
+      MEMBER_POLL_INTERVAL_MS: ${MEMBER_POLL_INTERVAL_MS:-30000}
+      RETENTION_STARTUP_DELAY_MS: ${RETENTION_STARTUP_DELAY_MS:-60000}
+      RETENTION_INTERVAL_MS: ${RETENTION_INTERVAL_MS:-86400000}
+      SESSION_MAX_AGE_MS: ${SESSION_MAX_AGE_MS:-604800000}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-1000}
+      RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-1 minute}
+      DB_POOL_MAX: ${DB_POOL_MAX:-20}
+      DB_IDLE_TIMEOUT_MS: ${DB_IDLE_TIMEOUT_MS:-30000}
+      DB_CONNECT_TIMEOUT_MS: ${DB_CONNECT_TIMEOUT_MS:-5000}
 
   nchan:
     build:

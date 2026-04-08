@@ -1,57 +1,59 @@
 <template>
   <div class="fleet-replay">
     <div class="replay-header">
-      <Button icon="pi pi-arrow-left" text @click="$emit('back')" label="Back to fleet list" />
-      <h2 v-if="summary">Fleet {{ summary.id?.slice(0, 12) }}… &mdash; {{ fmtDate(summary.created_at) }}</h2>
-      <span v-if="summary?.closed_at" class="duration">{{ summary.duration_min }} min</span>
+      <Button icon="pi pi-arrow-left" text @click="$emit('back')" :label="t('replay.backToList')" />
+      <h2 v-if="summary">{{ t('replay.fleetTitle', { id: summary.id?.slice(0, 12) ?? '', date: fmtDate(summary.created_at) }) }}</h2>
+      <span v-if="summary?.closed_at" class="duration">{{ t('replay.durationMin', { count: summary.duration_min }) }}</span>
     </div>
 
     <TabView class="replay-tabs">
       <!-- Overview tab -->
-      <TabPanel header="Overview">
+      <TabPanel :header="t('replay.tabOverview')">
         <div v-if="summary" class="overview-grid">
-          <div class="kv-row"><span>FC</span><b>{{ summary.fc_name ?? '—' }}</b></div>
-          <div class="kv-row"><span>Members</span><b>{{ summary.member_count }}</b></div>
-          <div class="kv-row"><span>Total Damage</span><b>{{ fmtNum(summary.total_damage ?? 0) }}</b></div>
+          <div class="kv-row"><span>{{ t('replay.kvFc') }}</span><b>{{ summary.fc_name ?? '—' }}</b></div>
+          <div class="kv-row"><span>{{ t('replay.kvMembers') }}</span><b>{{ summary.member_count }}</b></div>
+          <div class="kv-row"><span>{{ t('replay.kvTotalDamage') }}</span><b>{{ fmtNum(summary.total_damage ?? 0) }}</b></div>
         </div>
         <PresenceTimeline :presence="presence" class="presence-chart" />
       </TabPanel>
 
       <!-- Combat Timeline tab -->
-      <TabPanel header="Timeline">
+      <TabPanel :header="t('replay.tabTimeline')">
         <CombatTimeline :points="timelinePoints" @scrub="onScrub" />
         <div v-if="scrubTime" class="scrub-info">
-          Showing snapshot at {{ fmtTime(scrubTime) }}
+          {{ t('replay.showingSnapshot', { time: fmtTime(scrubTime) }) }}
         </div>
         <MemberTable :members="snapshotAtScrub" />
       </TabPanel>
 
       <!-- Percentiles tab -->
-      <TabPanel header="Percentiles">
+      <TabPanel :header="t('replay.tabPercentiles')">
         <div class="pilot-selector">
           <Select
             v-model="selectedCharId"
             :options="pilotOptions"
             option-label="label"
             option-value="value"
-            placeholder="Select pilot"
+            :placeholder="t('replay.selectPilot')"
           />
         </div>
         <PercentileChart :points="pilotPercentilePoints" />
       </TabPanel>
 
       <!-- Participation tab -->
-      <TabPanel header="Participation">
+      <TabPanel :header="t('replay.tabParticipation')">
         <DataTable :value="participation" size="small" class="part-table">
-          <Column field="characterName" header="Pilot"  sortable />
-          <Column field="shipName"      header="Ship"   sortable />
-          <Column field="totalDamage"   header="Damage" sortable>
+          <Column field="characterName" :header="t('col.pilot')"  sortable />
+          <Column field="shipName"      :header="t('col.ship')"   sortable>
+            <template #body="{ data }">{{ shipName(data.shipName) }}</template>
+          </Column>
+          <Column field="totalDamage"   :header="t('col.damage')" sortable>
             <template #body="{ data }">{{ fmtNum(data.totalDamage ?? 0) }}</template>
           </Column>
-          <Column field="nonCombatPct"  header="Non-Combat %" sortable>
+          <Column field="nonCombatPct"  :header="t('col.nonCombatPct')" sortable>
             <template #body="{ data }">{{ (data.nonCombatPct ?? 0).toFixed(1) }}%</template>
           </Column>
-          <Column field="status" header="Status">
+          <Column field="status" :header="t('col.status')">
             <template #body="{ data }">
               <ParticipationBadge :status="data.status" :reason="data.reason" />
             </template>
@@ -60,12 +62,12 @@
       </TabPanel>
 
       <!-- Events tab -->
-      <TabPanel header="Events">
+      <TabPanel :header="t('replay.tabEvents')">
         <div class="event-filters">
-          <InputText v-model="eventFilters.target"  placeholder="Target…"  size="small" />
-          <InputText v-model="eventFilters.weapon"  placeholder="Weapon…"  size="small" />
-          <InputText v-model="eventFilters.charId"  placeholder="Char ID…" size="small" />
-          <Button label="Apply" size="small" @click="loadEvents(1)" />
+          <InputText v-model="eventFilters.target"  :placeholder="t('replay.filterTarget')"  size="small" />
+          <InputText v-model="eventFilters.weapon"  :placeholder="t('replay.filterWeapon')"  size="small" />
+          <InputText v-model="eventFilters.charId"  :placeholder="t('replay.filterCharId')"  size="small" />
+          <Button :label="t('replay.apply')" size="small" @click="loadEvents(1)" />
         </div>
         <EventLogTable :rows="eventData" @page="loadEvents" />
       </TabPanel>
@@ -75,6 +77,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
+import { useTranslation } from 'i18next-vue';
 import TabView from 'primevue/tabview';
 import TabPanel from 'primevue/tabpanel';
 import DataTable from 'primevue/datatable';
@@ -91,9 +94,13 @@ import BreakdownTable from '@/components/BreakdownTable.vue';
 import HitQualityBar from '@/components/HitQualityBar.vue';
 import ParticipationBadge from '@/components/ParticipationBadge.vue';
 import EventLogTable from '@/components/EventLogTable.vue';
+import { useEveNames } from '@/composables/useEveNames';
 
 const props = defineProps<{ fleetId: string }>();
 defineEmits<{ back: [] }>();
+const { t } = useTranslation();
+const { shipName } = useEveNames();
+
 
 const summary      = ref<any>(null);
 const timelineFull = ref<any[]>([]);

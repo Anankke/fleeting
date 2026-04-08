@@ -1,13 +1,12 @@
 <template>
   <div class="history-page">
-    <header class="top-bar">
-      <span class="logo">PELD Online — Fleet History</span>
-      <Button label="Logout" icon="pi pi-sign-out" text @click="logout" />
-    </header>
+    <AppNav :me="me">
+      <Button :label="t('logout')" icon="pi pi-sign-out" text @click="logout" />
+    </AppNav>
 
     <main v-if="!selectedFleetId">
       <div class="page-header">
-        <h2>Past Fleets</h2>
+        <h2>{{ t('history.pageTitle') }}</h2>
       </div>
       <DataTable
         :value="fleets"
@@ -21,19 +20,19 @@
         @row-click="openFleet($event.data.id)"
         row-hover
       >
-        <Column field="id"            header="Fleet ID"    style="min-width:160px">
+        <Column field="id"            :header="t('col.fleetId')"  style="min-width:160px">
           <template #body="{ data }">{{ data.id.slice(0, 12) }}…</template>
         </Column>
-        <Column field="fc_name"       header="FC"          style="min-width:120px" />
-        <Column field="member_count"  header="Members"     style="min-width:80px" />
-        <Column field="created_at"    header="Started"     style="min-width:140px">
+        <Column field="fc_name"       :header="t('col.fc')"       style="min-width:120px" />
+        <Column field="member_count"  :header="t('col.members')"  style="min-width:80px" />
+        <Column field="created_at"    :header="t('col.started')"  style="min-width:140px">
           <template #body="{ data }">{{ fmtDate(data.created_at) }}</template>
         </Column>
-        <Column field="closed_at"     header="Ended"       style="min-width:140px">
+        <Column field="closed_at"     :header="t('col.ended')"    style="min-width:140px">
           <template #body="{ data }">{{ data.closed_at ? fmtDate(data.closed_at) : '—' }}</template>
         </Column>
-        <Column field="duration_min"  header="Duration"    style="min-width:80px">
-          <template #body="{ data }">{{ data.duration_min != null ? data.duration_min + ' min' : '—' }}</template>
+        <Column field="duration_min"  :header="t('col.duration')" style="min-width:80px">
+          <template #body="{ data }">{{ data.duration_min != null ? t('history.durationMin', { count: data.duration_min }) : '—' }}</template>
         </Column>
       </DataTable>
     </main>
@@ -50,20 +49,23 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { useTranslation } from 'i18next-vue';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Toast from 'primevue/toast';
-import { api } from '@/api/client';
+import { api, getMe, type MeResponse } from '@/api/client';
 import { clearMeCache } from '@/router';
+import AppNav from '@/components/AppNav.vue';
 import FleetReplayView from './FleetReplayView.vue';
 
-const router         = useRouter();
+const me             = ref<MeResponse | null>(null);
 const fleets         = ref<any[]>([]);
 const totalFleets    = ref(0);
 const pageSize       = 20;
 const selectedFleetId = ref<string | null>(null);
+
+const { t } = useTranslation();
 
 async function loadFleets(page = 1) {
   try {
@@ -82,15 +84,15 @@ function fmtDate(iso: string) {
 }
 
 function logout() {
-  api.post('/auth/logout', {}).then(() => { clearMeCache(); router.push('/login'); });
+  api.post('/auth/logout', {}).then(() => { clearMeCache(); window.location.href = '/auth/login'; });
 }
 
 onMounted(async () => {
   try {
-    await api.get('/api/me');
+    me.value = await getMe();
   } catch {
     clearMeCache();
-    router.push('/login');
+    window.location.href = '/auth/login';
     return;
   }
   await loadFleets();
@@ -98,10 +100,8 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.history-page { display: flex; flex-direction: column; min-height: 100vh; background: #0a0e1a; color: #e0e8ff; }
-.top-bar { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1.5rem; background: #141928; border-bottom: 1px solid #2a3050; }
-.logo { font-size: 1.2rem; font-weight: 700; letter-spacing: 1px; }
+.history-page { display: flex; flex-direction: column; min-height: 100vh; background: #0d0f14; color: #cfd9ee; }
 main { padding: 1rem 1.5rem; }
-.page-header h2 { margin: 0 0 1rem; }
-.fleet-list { background: #141928; border-radius: 8px; overflow: hidden; cursor: pointer; }
+.page-header h2 { margin: 0 0 1rem; color: #c8a84b; }
+.fleet-list { background: #13181f; border-radius: 4px; overflow: hidden; cursor: pointer; }
 </style>

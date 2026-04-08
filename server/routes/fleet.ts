@@ -47,7 +47,7 @@ export default async function fleetRoutes(fastify: FastifyInstance) {
       startTracking(fleet.id, fcCharacterId as number, BigInt(eveFleetId), oidcAccessToken);
     }
 
-    reply.code(201).send(fleet);
+    return reply.code(201).send(fleet);
   });
 
   // GET /api/fleet/discover — find active fleet session for a character's current EVE fleet
@@ -68,9 +68,9 @@ export default async function fleetRoutes(fastify: FastifyInstance) {
         [esiFleet.fleet_id],
       );
       if (!rows.length) return reply.code(404).send({ error: 'No active fleet session found' });
-      reply.send(rows[0]);
+      return reply.send(rows[0]);
     } catch {
-      reply.code(404).send({ error: 'Not in a fleet' });
+      return reply.code(404).send({ error: 'Not in a fleet' });
     }
   });
 
@@ -82,7 +82,7 @@ export default async function fleetRoutes(fastify: FastifyInstance) {
     const s = req.session as unknown as Record<string, unknown>;
     const owned = await characterBelongsToUser(s['userId'] as string, Number(characterId));
     if (!owned) return reply.code(403).send({ error: 'Character not owned by you' });
-    reply.send(await fleets.getFleetsByFc(Number(characterId)));
+    return reply.send(await fleets.getFleetsByFc(Number(characterId)));
   });
 
   // POST /api/fleet/:id/join
@@ -97,7 +97,7 @@ export default async function fleetRoutes(fastify: FastifyInstance) {
     const fleet = await fleets.getFleetById(params.id);
     if (!fleet || !fleet.is_open) return reply.code(404).send({ error: 'Fleet not found' });
     await upsertFleetMember(params.id, characterId as number);
-    reply.send({ ok: true });
+    return reply.send({ ok: true });
   });
 
   // GET /api/fleet/:id/snapshot — live aggregate + presence snapshot
@@ -111,7 +111,7 @@ export default async function fleetRoutes(fastify: FastifyInstance) {
       getFleetSystemSnapshot(params.id),
     ]);
 
-    reply.send({ aggregate: agg, presence });
+    return reply.send({ aggregate: agg, presence });
   });
 
   // DELETE /api/fleet/:id — close fleet
@@ -126,6 +126,6 @@ export default async function fleetRoutes(fastify: FastifyInstance) {
 
     await fleets.closeFleet(params.id);
     stopTracking(params.id);
-    reply.send({ ok: true });
+    return reply.send({ ok: true });
   });
 }

@@ -5,7 +5,7 @@ const NUMERIC_FIELDS = [
 
 type NumericField = (typeof NUMERIC_FIELDS)[number];
 
-const MAX_BREAKDOWN_ENTRIES = 20;
+const MAX_BREAKDOWN_ENTRIES = parseInt(process.env.BREAKDOWN_MAX_ENTRIES ?? '20', 10);
 
 export interface BreakdownEntry {
   pilotName?:  string;
@@ -24,6 +24,7 @@ export interface PilotSnapshot {
   shipTypeId?: number;
   solarSystemId?: number;
   hitQualityDistribution?: Record<string, number>;
+  hitQualityDistributionIn?: Record<string, number>;
   breakdown?: BreakdownEntry[];
   dpsOut?: number;
   dpsIn?: number;
@@ -42,6 +43,7 @@ export interface FleetAggregate {
   capTransfered: number; capRecieved: number;
   capDamageOut: number; capDamageIn: number; mined: number;
   hitQualityDistribution: Record<string, number>;
+  hitQualityDistributionIn: Record<string, number>;
   breakdown: BreakdownEntry[];
   memberSnapshots: Record<number, unknown>;
   fleetSessionId?: string;
@@ -53,6 +55,7 @@ export function computeFleetAggregate(snapshots: PilotSnapshot[]): FleetAggregat
     dpsOut: 0, dpsIn: 0, logiOut: 0, logiIn: 0,
     capTransfered: 0, capRecieved: 0, capDamageOut: 0, capDamageIn: 0, mined: 0,
     hitQualityDistribution: {},
+    hitQualityDistributionIn: {},
     breakdown: [],
     memberSnapshots: {},
   };
@@ -64,6 +67,11 @@ export function computeFleetAggregate(snapshots: PilotSnapshot[]): FleetAggregat
     if (snap.hitQualityDistribution) {
       for (const [qual, count] of Object.entries(snap.hitQualityDistribution)) {
         agg.hitQualityDistribution[qual] = (agg.hitQualityDistribution[qual] ?? 0) + count;
+      }
+    }
+    if (snap.hitQualityDistributionIn) {
+      for (const [qual, count] of Object.entries(snap.hitQualityDistributionIn)) {
+        agg.hitQualityDistributionIn[qual] = (agg.hitQualityDistributionIn[qual] ?? 0) + count;
       }
     }
     if (Array.isArray(snap.breakdown)) {

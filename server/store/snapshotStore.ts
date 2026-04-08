@@ -1,8 +1,8 @@
 import * as mem from './memcached.js';
 import { computeFleetAggregate, computeWarAggregate, type PilotSnapshot, type FleetAggregate } from '../lib/aggregate.js';
 
-const PILOT_TTL = 15; // seconds
-const FLEET_TTL = 5;  // seconds
+const PILOT_TTL = parseInt(process.env.PILOT_TTL_S       ?? '15', 10); // seconds
+const FLEET_TTL = parseInt(process.env.FLEET_AGG_TTL_S   ?? '5',  10); // seconds
 
 function pilotKey(fleetSessionId: string, characterId: number) {
   return `pilot:${fleetSessionId}:${characterId}`;

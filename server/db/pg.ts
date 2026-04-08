@@ -4,9 +4,9 @@ const { Pool } = pg;
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  max: 20,
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 5_000,
+  max:                     parseInt(process.env.DB_POOL_MAX            ?? '20',    10),
+  idleTimeoutMillis:       parseInt(process.env.DB_IDLE_TIMEOUT_MS     ?? '30000', 10),
+  connectionTimeoutMillis: parseInt(process.env.DB_CONNECT_TIMEOUT_MS  ?? '5000',  10),
 });
 
 pool.on('error', (err: Error) => {

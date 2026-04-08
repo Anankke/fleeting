@@ -1,0 +1,185 @@
+{
+  "appName": "PELD Online",
+
+  "nav": {
+    "pilot": "飞行员",
+    "commander": "指挥官",
+    "history": "历史记录"
+  },
+
+  "health": {
+    "connecting": "正在连接到服务器…",
+    "notReachable": "服务器无法访问，等待中…",
+    "retrying": "每 {{count}} 秒重试一次…"
+  },
+
+  "logout": "退出登录",
+  "authenticating": "正在验证身份…",
+
+  "col": {
+    "pilot": "飞行员",
+    "target": "目标",
+    "weapon": "武器",
+    "ship": "飞船",
+    "class": "级别",
+    "category": "类别",
+    "total": "总计",
+    "hits": "命中",
+    "time": "时间",
+    "damage": "伤害",
+    "quality": "命中质量",
+    "system": "星系",
+    "dps": "DPS",
+    "status": "状态",
+    "fleetId": "舰队 ID",
+    "fc": "FC",
+    "members": "成员数",
+    "started": "开始时间",
+    "ended": "结束时间",
+    "duration": "持续时间",
+    "nonCombatPct": "非战斗占比 %"
+  },
+
+  "breakdown": {
+    "title": "战斗详情",
+    "hint": "DPS 窗口累计，按飞行员·武器·目标分组",
+    "tooltip": "当前 DPS 窗口的累计数据 — 按飞行员、武器、飞船及目标分组"
+  },
+
+  "hitQuality": {
+    "outgoing": "输出命中质量",
+    "incoming": "受击命中质量",
+    "noData": "暂无数据",
+    "tooltip": "{{label}}：{{count}} 次命中（{{pct}}%）"
+  },
+
+  "stat": {
+    "dpsOut":  "输出 DPS",
+    "dpsIn":   "受击 DPS",
+    "logiOut": "治疗输出",
+    "logiIn":  "治疗受益",
+    "neutOut": "电容干扰输出",
+    "neutIn":  "电容干扰受益",
+    "capXfer": "电容传输",
+    "capRcvd": "电容接收",
+    "mining":  "采矿"
+  },
+
+  "categoryValue": {
+    "dpsOut": "输出 DPS",
+    "dpsIn": "受击 DPS",
+    "logiOut": "治疗输出",
+    "logiIn": "治疗受益",
+    "capTransfered": "电容传输输出",
+    "capRecieved": "电容传输接收",
+    "capDamageOut": "电容干扰输出",
+    "capDamageIn": "电容干扰受益",
+    "mined": "采矿"
+  },
+
+  "participation": {
+    "active":   "活跃",
+    "partial":  "部分参与",
+    "inactive": "未参与"
+  },
+
+  "series": {
+    "dps":           "DPS",
+    "onlineMembers": "在线成员",
+    "p50": "p50",
+    "p90": "p90",
+    "p95": "p95",
+    "p99": "p99",
+    "avg": "平均"
+  },
+
+  "axis": {
+    "damage":  "伤害",
+    "members": "成员数"
+  },
+
+  "fleetSelect": {
+    "label":       "监控舰队",
+    "placeholder": "选择要监控的舰队",
+    "empty":       "当前没有活跃舰队",
+    "option":      "舰队 {{id}}…（{{count}} 名成员）"
+  },
+
+  "role": {
+    "warCommander":   "战争指挥官",
+    "fleetCommander": "舰队指挥官"
+  },
+
+  "commander": {
+    "charactersLabel": "角色",
+    "selectCharacters": "选择角色",
+    "recheckFleets": "重新检测舰队",
+    "fleetStatus": "舰队 {{id}}…",
+    "noFleet": "未找到舰队",
+    "discovering": "检测中…"
+  },
+
+  "pilot": {
+    "selectCharacter": "选择角色",
+    "openLogs":  "打开日志",
+    "stopLogs":  "停止日志",
+    "scanningLogs": "正在扫描日志文件…",
+    "dpsWindow": "DPS 窗口（秒）",
+    "fleetUploading": "舰队：{{id}} — 每 2 秒上传一次",
+    "noFleetLocal": "未找到舰队 — 仅本地模式",
+    "allCharsAggregate": "所有角色（汇总）",
+    "characterFallback": "角色",
+    "cannotOpenFolder": "无法打开文件夹"
+  },
+
+  "liveLog": {
+    "title": "实时事件日志",
+    "hint": "单条解析事件，最新在前 · 最近 {{count}} 条"
+  },
+
+  "overview": {
+    "button": "总览设置",
+    "buttonTitle": "管理每个角色的 EVE 总览设置",
+    "dialogTitle": "总览设置",
+    "hint": "为每个角色加载 EVE 总览设置文件，以提升战斗日志中的飞行员、舰船和武器名称解析效果。文件仅保存在浏览器本地。",
+    "noCharacters": "未加载角色。",
+    "noOverviewLoaded": "尚未加载总览设置",
+    "upload": "上传",
+    "copyFrom": "复制自...",
+    "apply": "应用",
+    "clear": "清除",
+    "close": "关闭",
+    "loadedSummary": "总览已加载",
+    "loadedDetail": "{{name}}：总览设置已应用。",
+    "uploadFailed": "上传失败",
+    "copiedSummary": "总览已复制",
+    "copiedDetail": "已从 {{from}} 复制到 {{to}}。",
+    "clearedSummary": "总览已清除",
+    "clearedDetail": "{{name}}：总览设置已移除。"
+  },
+
+  "history": {
+    "pageTitle": "历史舰队",
+    "durationMin": "{{count}} 分钟"
+  },
+
+  "replay": {
+    "backToList":   "返回舰队列表",
+    "fleetTitle":   "舰队 {{id}}… — {{date}}",
+    "durationMin":  "{{count}} 分钟",
+    "tabOverview":  "概览",
+    "tabTimeline":  "时间轴",
+    "tabPercentiles": "百分位数",
+    "tabParticipation": "参战情况",
+    "tabEvents":    "事件",
+    "kvFc":         "FC",
+    "kvMembers":    "成员",
+    "kvTotalDamage": "总伤害",
+    "showingSnapshot": "显示 {{time}} 的快照",
+    "selectPilot":  "选择飞行员",
+    "filterTarget": "目标…",
+    "filterWeapon": "武器…",
+    "filterCharId": "角色 ID…",
+    "apply":        "应用"
+  }
+}

@@ -23,7 +23,7 @@ export default async function historyRoutes(fastify: FastifyInstance) {
     const q = req.query as Record<string, string | undefined>;
     const page  = Number(q['page']  ?? 1);
     const limit = Number(q['limit'] ?? 20);
-    reply.send(await historyQueries.getFleetList({ page, limit }));
+    return reply.send(await historyQueries.getFleetList({ page, limit }));
   });
 
   // GET /api/history/fleet/:id/summary
@@ -31,7 +31,7 @@ export default async function historyRoutes(fastify: FastifyInstance) {
     const { id } = req.params as { id: string };
     const fleet = await getFleetById(id);
     if (!fleet) return reply.code(404).send({ error: 'Fleet not found' });
-    reply.send(await historyQueries.getFleetSummary(id));
+    return reply.send(await historyQueries.getFleetSummary(id));
   });
 
   // GET /api/history/fleet/:id/timeline
@@ -39,7 +39,7 @@ export default async function historyRoutes(fastify: FastifyInstance) {
     const { id } = req.params as { id: string };
     const fleet = await getFleetById(id);
     if (!fleet) return reply.code(404).send({ error: 'Fleet not found' });
-    reply.send(await timeline.getForFleet(id));
+    return reply.send(await timeline.getForFleet(id));
   });
 
   // GET /api/history/fleet/:id/snapshots/:charId
@@ -47,7 +47,7 @@ export default async function historyRoutes(fastify: FastifyInstance) {
     const { id, charId } = req.params as { id: string; charId: string };
     const fleet = await getFleetById(id);
     if (!fleet) return reply.code(404).send({ error: 'Fleet not found' });
-    reply.send(await snapshots.getForPilot(id, Number(charId)));
+    return reply.send(await snapshots.getForPilot(id, Number(charId)));
   });
 
   // GET /api/history/fleet/:id/presence
@@ -55,7 +55,7 @@ export default async function historyRoutes(fastify: FastifyInstance) {
     const { id } = req.params as { id: string };
     const fleet = await getFleetById(id);
     if (!fleet) return reply.code(404).send({ error: 'Fleet not found' });
-    reply.send(await getPresenceTimeline(id));
+    return reply.send(await getPresenceTimeline(id));
   });
 
   // GET /api/history/fleet/:id/events — paginated + filtered
@@ -81,7 +81,7 @@ export default async function historyRoutes(fastify: FastifyInstance) {
         limit: Math.min(Number(q['limit'] ?? 100), 500),
       },
     );
-    reply.send(result);
+    return reply.send(result);
   });
 
   // GET /api/history/fleet/:id/participation
@@ -89,6 +89,6 @@ export default async function historyRoutes(fastify: FastifyInstance) {
     const { id } = req.params as { id: string };
     const fleet = await getFleetById(id);
     if (!fleet) return reply.code(404).send({ error: 'Fleet not found' });
-    reply.send(await historyQueries.getFleetParticipation(id));
+    return reply.send(await historyQueries.getFleetParticipation(id));
   });
 }

@@ -37,7 +37,7 @@ async function start() {
       httpOnly: true,
       sameSite: 'lax',
       secure:   process.env.NODE_ENV === 'production',
-      maxAge:   7 * 24 * 60 * 60 * 1000,
+      maxAge:   parseInt(process.env.SESSION_MAX_AGE_MS ?? '604800000', 10),
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     store: pgStore as any,
@@ -51,8 +51,8 @@ async function start() {
 
   await app.register(fastifyRateLimit, {
     global:     true,
-    max:        1000,
-    timeWindow: '1 minute',
+    max:        parseInt(process.env.RATE_LIMIT_MAX    ?? '1000',     10),
+    timeWindow: process.env.RATE_LIMIT_WINDOW          ?? '1 minute',
   });
 
   await app.register(authRoutes);
@@ -60,6 +60,16 @@ async function start() {
   await app.register(fleetRoutes);
   await app.register(warRoutes);
   await app.register(historyRoutes);
+
+  // Health check — returns 200 once the server is fully started and DB is reachable.
+  app.get('/health', async (_req, reply) => {
+    try {
+      await pool.query('SELECT 1');
+      return reply.send({ ok: true });
+    } catch {
+      return reply.status(503).send({ ok: false, reason: 'db_unavailable' });
+    }
+  });
 
   // Prometheus metrics endpoint — no auth; restrict via nginx/firewall in prod.
   app.get('/metrics', async (_req, reply) => {

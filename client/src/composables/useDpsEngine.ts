@@ -47,11 +47,13 @@ export interface DpsSnapshot {
   capDamageIn:    number;
   mined:          number;
   breakdown:      BreakdownEntry[];
-  hitQualityDistribution: ReturnType<typeof emptyDistribution>;
+  hitQualityDistribution:   ReturnType<typeof emptyDistribution>; // outgoing (dpsOut)
+  hitQualityDistributionIn: ReturnType<typeof emptyDistribution>; // incoming (dpsIn)
+  dominantHitQuality: string | null; // most frequent outgoing quality in last 15 s
   percentiles:    Percentiles;
 }
 
-interface BufferedEntry {
+export interface BufferedLogEntry {
   timestamp: number; // Date.now() when received
   entry:     LogEntry;
 }
@@ -60,7 +62,7 @@ export function useDpsEngine(windowSecondsRef?: Ref<number>) {
   const defaultWindow = ref(60);
   const windowSec = windowSecondsRef ?? defaultWindow;
 
-  const buffer = ref<BufferedEntry[]>([]);
+  const buffer = ref<BufferedLogEntry[]>([]);
 
   /** Ingest new log entries from useLogReader */
   function addEntries(entries: LogEntry[]) {
@@ -73,7 +75,6 @@ export function useDpsEngine(windowSecondsRef?: Ref<number>) {
 
   function prune() {
     const cutoff = Date.now() - windowSec.value * 1000;
-    // Keep only entries within the window
     let start = 0;
     while (start < buffer.value.length && buffer.value[start].timestamp < cutoff) {
       start++;
@@ -81,8 +82,17 @@ export function useDpsEngine(windowSecondsRef?: Ref<number>) {
     if (start > 0) buffer.value = buffer.value.slice(start);
   }
 
-  const snapshot = computed<DpsSnapshot>(() => {
+  function exportBuffer(): BufferedLogEntry[] {
     prune();
+    return buffer.value.map(({ timestamp, entry }) => ({ timestamp, entry }));
+  }
+
+  function restoreBuffer(entries: BufferedLogEntry[]) {
+    buffer.value = entries.map(({ timestamp, entry }) => ({ timestamp, entry }));
+    prune();
+  }
+
+  const snapshot = computed<DpsSnapshot>(() => {
     const win = windowSec.value;
     const now = Date.now();
     const cutoff = now - win * 1000;
@@ -92,17 +102,29 @@ export function useDpsEngine(windowSecondsRef?: Ref<number>) {
       dpsOut: 0, dpsIn: 0, logiOut: 0, logiIn: 0,
       capTransfered: 0, capRecieved: 0, capDamageOut: 0, capDamageIn: 0, mined: 0,
     };
-    const dist = emptyDistribution();
+    const dist   = emptyDistribution(); // outgoing (dpsOut)
+    const distIn = emptyDistribution(); // incoming (dpsIn)
     const dpsOutAmounts: number[] = [];
+    // Short window for dominant quality: configurable window or the full window if smaller
+    const DOMINANT_QUALITY_WINDOW_MS = parseInt(import.meta.env.VITE_DOMINANT_QUALITY_WINDOW_MS ?? '15000', 10);
+    const shortCutoff = now - Math.min(DOMINANT_QUALITY_WINDOW_MS, win * 1000);
+    const shortDist: Record<string, number> = {};
     // Group hits by distinct (pilotName, weaponType, shipType, category, targetName)
     // to avoid storing every individual hit while still representing per-group totals.
     const groupMap = new Map<string, BreakdownEntry>();
 
-    for (const { entry } of buffer.value) {
+    for (const { timestamp, entry } of buffer.value) {
+      if (timestamp < cutoff) continue; // entry outside the current window
       sums[entry.category] += entry.amount;
       if (entry.hitQuality && entry.category === 'dpsOut') {
         dist[entry.hitQuality]++;
         dpsOutAmounts.push(entry.amount);
+        if (timestamp >= shortCutoff) {
+          shortDist[entry.hitQuality] = (shortDist[entry.hitQuality] ?? 0) + 1;
+        }
+      }
+      if (entry.hitQuality && entry.category === 'dpsIn') {
+        distIn[entry.hitQuality]++;
       }
       const key = `${entry.pilotName}\x00${entry.weaponType}\x00${entry.shipType}\x00${entry.category}\x00${entry.targetName}`;
       const existing = groupMap.get(key);
@@ -132,6 +154,13 @@ export function useDpsEngine(windowSecondsRef?: Ref<number>) {
     const breakdown = [...groupMap.values()].sort((a, b) => b.amount - a.amount);
     if (breakdown.length > 100) breakdown.length = 100;
 
+    // Dominant outgoing hit quality in the recent 15-second window
+    let dominantHitQuality: string | null = null;
+    let dominated = 0;
+    for (const [q, c] of Object.entries(shortDist)) {
+      if (c > dominated) { dominated = c; dominantHitQuality = q; }
+    }
+
     const percentiles = computePercentiles(dpsOutAmounts);
 
     return {
@@ -145,7 +174,9 @@ export function useDpsEngine(windowSecondsRef?: Ref<number>) {
       capDamageIn:   sums.capDamageIn / win,
       mined:         sums.mined / win,
       breakdown,
-      hitQualityDistribution: dist,
+      hitQualityDistribution:   dist,
+      hitQualityDistributionIn: distIn,
+      dominantHitQuality,
       percentiles,
     };
   });
@@ -154,7 +185,7 @@ export function useDpsEngine(windowSecondsRef?: Ref<number>) {
     buffer.value = [];
   }
 
-  return { addEntries, snapshot, reset, windowSec };
+  return { addEntries, snapshot, reset, windowSec, exportBuffer, restoreBuffer };
 }
 
 // ── Percentile helpers ─────────────────────────────────────────────────────────

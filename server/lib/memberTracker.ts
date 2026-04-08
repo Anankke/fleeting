@@ -18,7 +18,7 @@ import { insertPresenceBatch, touchFleetMembers } from '../db/queries/members.js
 import { getOpenFleets } from '../db/queries/fleets.js';
 import { activeFleetTrackers, fleetTrackerPollsTotal } from './metrics.js';
 
-const POLL_INTERVAL_MS = 30_000;
+const POLL_INTERVAL_MS = parseInt(process.env.MEMBER_POLL_INTERVAL_MS ?? '30000', 10);
 
 interface TrackerEntry {
   timer: ReturnType<typeof setInterval>;

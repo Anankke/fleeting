@@ -2,6 +2,7 @@
   <div class="fleet-select">
     <label class="fs-label">Monitor Fleets</label>
     <MultiSelect
+      v-if="loading || options.length > 0"
       v-model="model"
       :options="options"
       option-label="label"
@@ -12,6 +13,7 @@
       class="fleet-ms"
       @focus="loadOptions"
     />
+    <span v-else class="fs-empty">No active fleets</span>
   </div>
 </template>
 
@@ -44,5 +46,6 @@ onMounted(loadOptions);
 <style scoped>
 .fleet-select { display: flex; align-items: center; gap: 0.75rem; }
 .fs-label { color: #8a9cc0; font-size: 0.85rem; white-space: nowrap; }
+.fs-empty { color: #5b6f8e; font-size: 0.85rem; font-style: italic; }
 .fleet-ms { min-width: 280px; }
 </style>

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../lib/auth.js';
 import { characterBelongsToUser } from '../db/queries/users.js';
+import { upsertFleetMember } from '../db/queries/members.js';
 import * as snapshotStore from '../store/snapshotStore.js';
 import type { PilotSnapshot } from '../lib/aggregate.js';
 import { publish } from '../lib/nchanPublisher.js';
@@ -28,6 +29,7 @@ function sanitizeSnapshot(raw: Record<string, unknown>): PilotSnapshot {
   }
   // Pass through safe non-numeric fields
   if (raw['hitQualityDistribution'] !== undefined) out['hitQualityDistribution'] = raw['hitQualityDistribution'];
+  if (raw['hitQualityDistributionIn'] !== undefined) out['hitQualityDistributionIn'] = raw['hitQualityDistributionIn'];
   if (raw['percentiles'] !== undefined) out['percentiles'] = raw['percentiles'];
   if (Array.isArray(raw['breakdown'])) out['breakdown'] = raw['breakdown'];
   return out as unknown as PilotSnapshot;
@@ -47,10 +49,10 @@ export default async function pilotRoutes(fastify: FastifyInstance) {
     try {
       const token  = await exchangeEveToken(characterId, req.session);
       const status = await getCharacterOnlineStatus(token, characterId);
-      reply.send({ online: status.online });
+      return reply.send({ online: status.online });
     } catch {
       // If ESI fails we conservatively report offline so fleet ops are skipped.
-      reply.send({ online: false });
+      return reply.send({ online: false });
     }
   });
 
@@ -76,6 +78,9 @@ export default async function pilotRoutes(fastify: FastifyInstance) {
     if (fleetSessionId) {
       await snapshotStore.setPilotSnapshot(fleetSessionId as string, characterId as number, snap);
       await snapshotStore.addFleetMember(fleetSessionId as string, characterId as number);
+      // Record DB membership immediately so nchan auth can verify access without waiting for
+      // the ESI member-tracker poll (which runs every 30 s).
+      upsertFleetMember(fleetSessionId as string, characterId as number).catch(console.error);
 
       const fleetAgg = await snapshotStore.getFleetAggregate(fleetSessionId as string);
       if (fleetAgg) {
@@ -85,6 +90,6 @@ export default async function pilotRoutes(fastify: FastifyInstance) {
       write({ fleetSessionId: fleetSessionId as string, characterId: characterId as number, snapshot: snapshot as Parameters<typeof write>[0]['snapshot'] }).catch(console.error);
     }
 
-    reply.code(204).send();
+    return reply.code(204).send();
   });
 }

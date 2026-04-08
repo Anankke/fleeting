@@ -20,7 +20,7 @@ export default async function warRoutes(fastify: FastifyInstance) {
         };
       }),
     );
-    reply.send(result);
+    return reply.send(result);
   });
 
   // GET /api/war/snapshot?fleets=id1,id2,... — combined aggregate across selected fleets
@@ -37,6 +37,6 @@ export default async function warRoutes(fastify: FastifyInstance) {
 
     const warAgg = await snapshotStore.getWarAggregate(fleetIds);
     if (!warAgg) return reply.code(404).send({ error: 'No active fleet data' });
-    reply.send(warAgg);
+    return reply.send(warAgg);
   });
 }

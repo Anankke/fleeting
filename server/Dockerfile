@@ -1,11 +1,7 @@
-FROM node:22-alpine AS builder
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --omit=dev
-COPY . .
-
 FROM node:22-alpine
 WORKDIR /app
-COPY --from=builder /app .
+COPY package*.json ./
+RUN npm ci
+COPY . .
 EXPOSE 3000
-CMD ["node", "index.js"]
+CMD ["node_modules/.bin/tsx", "index.ts"]

@@ -1,29 +1,37 @@
 <template>
   <div class="stats-strip">
     <div v-for="cat in CATEGORIES" :key="cat.key" class="stat-tile">
-      <div class="tile-label">{{ cat.label }}</div>
-      <div class="tile-value">{{ fmt(snap?.[cat.key] ?? 0) }}</div>
+      <div class="tile-label">{{ t(cat.labelKey) }}</div>
+      <div class="tile-value">{{ fmt(snapshot?.[cat.key] ?? 0) }}</div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import type { DpsSnapshot } from '@/composables/useDpsEngine';
+import { useTranslation } from 'i18next-vue';
 
-defineProps<{ snapshot: DpsSnapshot | null }>();
+/** Minimal duck-typed snapshot — accepts DpsSnapshot, FleetAggregate, or null. */
+interface StatsLike {
+  dpsOut: number; dpsIn: number;
+  logiOut: number; logiIn: number;
+  capDamageOut: number; capDamageIn: number;
+  capTransfered: number; capRecieved: number;
+  mined: number;
+}
 
-const snap = defineModel<DpsSnapshot | null>('snapshot', { default: null });
+const props = defineProps<{ snapshot: StatsLike | null }>();
+const { t } = useTranslation();
 
 const CATEGORIES = [
-  { key: 'totalDps',     label: 'Total DPS' },
-  { key: 'gunDps',       label: 'Gun' },
-  { key: 'missileDps',   label: 'Missile' },
-  { key: 'droneDps',     label: 'Drone' },
-  { key: 'smartbombDps', label: 'Smartbomb' },
-  { key: 'turretDps',    label: 'Turret' },
-  { key: 'neut',         label: 'Neut' },
-  { key: 'remote',       label: 'Remote' },
-  { key: 'mining',       label: 'Mining' },
+  { key: 'dpsOut',        labelKey: 'stat.dpsOut' },
+  { key: 'dpsIn',         labelKey: 'stat.dpsIn' },
+  { key: 'logiOut',       labelKey: 'stat.logiOut' },
+  { key: 'logiIn',        labelKey: 'stat.logiIn' },
+  { key: 'capDamageOut',  labelKey: 'stat.neutOut' },
+  { key: 'capDamageIn',   labelKey: 'stat.neutIn' },
+  { key: 'capTransfered', labelKey: 'stat.capXfer' },
+  { key: 'capRecieved',   labelKey: 'stat.capRcvd' },
+  { key: 'mined',         labelKey: 'stat.mining' },
 ] as const;
 
 function fmt(v: number) {
@@ -33,21 +41,48 @@ function fmt(v: number) {
 }
 </script>
 
-<script lang="ts">
-// Allow passing snapshot as prop directly
-export default { inheritAttrs: false };
-</script>
-
 <style scoped>
-.stats-strip { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+.stats-strip {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 0.5rem;
+}
+
+@media (max-width: 1400px) {
+  .stats-strip { grid-template-columns: repeat(5, 1fr); }
+}
+
+@media (max-width: 1100px) {
+  .stats-strip { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .stats-strip { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 420px) {
+  .stats-strip { grid-template-columns: 1fr; }
+}
+
 .stat-tile {
-  flex: 1 1 90px;
   background: #141928;
   border: 1px solid #2a3050;
   border-radius: 8px;
-  padding: 0.6rem 0.8rem;
+  padding: 0.6rem 0.5rem;
   text-align: center;
+  min-width: 0;
 }
-.tile-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; color: #8a9cc0; margin-bottom: 0.25rem; }
+.dom-tile { grid-column: span 2; }
+.tile-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #8a9cc0;
+  margin-bottom: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .tile-value { font-size: 1.4rem; font-weight: 700; color: #7eb8ff; }
+.dom-val   { font-size: 1.1rem; font-weight: 700; }
 </style>

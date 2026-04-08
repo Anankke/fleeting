@@ -1,0 +1,185 @@
+{
+  "appName": "PELD Online",
+
+  "nav": {
+    "pilot": "Pilot",
+    "commander": "Commander",
+    "history": "History"
+  },
+
+  "health": {
+    "connecting": "Connecting to server…",
+    "notReachable": "Server not reachable — waiting…",
+    "retrying": "Retrying every {{count}}s…"
+  },
+
+  "logout": "Logout",
+  "authenticating": "Authenticating…",
+
+  "col": {
+    "pilot": "Pilot",
+    "target": "Target",
+    "weapon": "Weapon",
+    "ship": "Ship",
+    "class": "Class",
+    "category": "Category",
+    "total": "Total",
+    "hits": "Hits",
+    "time": "Time",
+    "damage": "Damage",
+    "quality": "Quality",
+    "system": "System",
+    "dps": "DPS",
+    "status": "Status",
+    "fleetId": "Fleet ID",
+    "fc": "FC",
+    "members": "Members",
+    "started": "Started",
+    "ended": "Ended",
+    "duration": "Duration",
+    "nonCombatPct": "Non-Combat %"
+  },
+
+  "breakdown": {
+    "title": "Aggregate Breakdown",
+    "hint": "DPS-window totals, grouped by actor · weapon · target",
+    "tooltip": "Aggregated totals for the current DPS window — grouped by pilot, weapon, ship, and target"
+  },
+
+  "hitQuality": {
+    "outgoing": "Outgoing Hit Quality",
+    "incoming": "Incoming Hit Quality",
+    "noData": "No data",
+    "tooltip": "{{label}}: {{count}} hits ({{pct}}%)"
+  },
+
+  "stat": {
+    "dpsOut":   "DPS Out",
+    "dpsIn":    "DPS In",
+    "logiOut":  "Logi Out",
+    "logiIn":   "Logi In",
+    "neutOut":  "Neut Out",
+    "neutIn":   "Neut In",
+    "capXfer":  "Cap Xfer",
+    "capRcvd":  "Cap Rcvd",
+    "mining":   "Mining"
+  },
+
+  "categoryValue": {
+    "dpsOut": "DPS Out",
+    "dpsIn": "DPS In",
+    "logiOut": "Logi Out",
+    "logiIn": "Logi In",
+    "capTransfered": "Cap Transfer Out",
+    "capRecieved": "Cap Transfer In",
+    "capDamageOut": "Neut Out",
+    "capDamageIn": "Neut In",
+    "mined": "Mining"
+  },
+
+  "participation": {
+    "active":   "Active",
+    "partial":  "Partial",
+    "inactive": "Inactive"
+  },
+
+  "series": {
+    "dps":           "DPS",
+    "onlineMembers": "Online Members",
+    "p50": "p50",
+    "p90": "p90",
+    "p95": "p95",
+    "p99": "p99",
+    "avg": "avg"
+  },
+
+  "axis": {
+    "damage":  "Damage",
+    "members": "Members"
+  },
+
+  "fleetSelect": {
+    "label":       "Monitor Fleets",
+    "placeholder": "Select fleets to monitor",
+    "empty":       "No active fleets",
+    "option":      "Fleet {{id}}… ({{count}} members)"
+  },
+
+  "role": {
+    "warCommander":   "War Commander",
+    "fleetCommander": "Fleet Commander"
+  },
+
+  "commander": {
+    "charactersLabel": "Characters",
+    "selectCharacters": "Select characters",
+    "recheckFleets": "Re-check fleets",
+    "fleetStatus": "Fleet {{id}}…",
+    "noFleet": "no fleet",
+    "discovering": "discovering…"
+  },
+
+  "pilot": {
+    "selectCharacter": "Select character",
+    "openLogs":  "Open Logs",
+    "stopLogs":  "Stop Logs",
+    "scanningLogs": "Scanning log files…",
+    "dpsWindow": "DPS Window (s)",
+    "fleetUploading": "Fleet: {{id}} — uploading every 2s",
+    "noFleetLocal": "No fleet found — local-only mode",
+    "allCharsAggregate": "All characters (aggregate)",
+    "characterFallback": "Character",
+    "cannotOpenFolder": "Cannot open folder"
+  },
+
+  "liveLog": {
+    "title": "Live Event Log",
+    "hint": "Individual parsed events, newest first · last {{count}}"
+  },
+
+  "overview": {
+    "button": "Overview",
+    "buttonTitle": "Manage per-character EVE overview settings",
+    "dialogTitle": "Overview Settings",
+    "hint": "Load your EVE overview settings file per character to improve pilot, ship, and weapon name extraction from combat logs. Files are stored locally in your browser.",
+    "noCharacters": "No characters loaded.",
+    "noOverviewLoaded": "No overview loaded",
+    "upload": "Upload",
+    "copyFrom": "Copy from...",
+    "apply": "Apply",
+    "clear": "Clear",
+    "close": "Close",
+    "loadedSummary": "Overview loaded",
+    "loadedDetail": "{{name}}: overview settings applied.",
+    "uploadFailed": "Upload failed",
+    "copiedSummary": "Overview copied",
+    "copiedDetail": "Copied from {{from}} -> {{to}}.",
+    "clearedSummary": "Overview cleared",
+    "clearedDetail": "{{name}}: overview settings removed."
+  },
+
+  "history": {
+    "pageTitle": "Past Fleets",
+    "durationMin": "{{count}} min"
+  },
+
+  "replay": {
+    "backToList":   "Back to fleet list",
+    "fleetTitle":   "Fleet {{id}}… — {{date}}",
+    "durationMin":  "{{count}} min",
+    "tabOverview":  "Overview",
+    "tabTimeline":  "Timeline",
+    "tabPercentiles": "Percentiles",
+    "tabParticipation": "Participation",
+    "tabEvents":    "Events",
+    "kvFc":         "FC",
+    "kvMembers":    "Members",
+    "kvTotalDamage": "Total Damage",
+    "showingSnapshot": "Showing snapshot at {{time}}",
+    "selectPilot":  "Select pilot",
+    "filterTarget": "Target…",
+    "filterWeapon": "Weapon…",
+    "filterCharId": "Char ID…",
+    "apply":        "Apply"
+  }
+}

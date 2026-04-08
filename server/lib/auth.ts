@@ -165,7 +165,12 @@ export async function oidcLogin(req: FastifyRequest, reply: FastifyReply): Promi
   url.searchParams.set('code_challenge',         codeChallenge);
   url.searchParams.set('code_challenge_method',  'S256');
 
-  reply.redirect(url.toString());
+  // Save session explicitly before redirecting so @fastify/session's onSend
+  // hook sees no pending changes and skips its async pg save — preventing the
+  // ERR_HTTP_HEADERS_SENT crash caused by connect-pg-simple's callback firing
+  // after the response has already been sent.
+  await req.session.save();
+  return reply.redirect(url.toString()) as unknown as void;
 }
 
 export async function oidcCallback(req: FastifyRequest, reply: FastifyReply): Promise<void> {
@@ -252,7 +257,7 @@ export async function oidcCallback(req: FastifyRequest, reply: FastifyReply): Pr
   sNew.oidcAccessExpiry = Date.now() + tokens.expires_in * 1000;
   if (tokens.refresh_token) sNew.oidcRefreshToken = tokens.refresh_token;
 
-  reply.redirect('/pilot');
+  return reply.redirect('/pilot') as unknown as void;
 }
 
 // ── Role mapping ───────────────────────────────────────────────────────────────
@@ -265,16 +270,18 @@ function mapGroupsToRoles(groups: string[]): string[] {
   const roleSet = new Set<string>();
   for (const group of groups) {
     const lower = group.toLowerCase();
-    if (lower === 'pilot') {
+    if (lower === 'ticker-member') {
       roleSet.add('pilot');
-    } else if (['fc', 't2-fc', '[auto] t2-fc', 'junior-fc', 'fleet-commander'].includes(lower)) {
+    }
+    if (['fc', 't2-fc', '[auto] t2-fc', 'junior-fc', 'exec', 'it'].includes(lower)) {
       roleSet.add('fc');
-    } else if (['war_commander', 'war-commander', 'exec', 'it'].includes(lower)) {
+    }
+    if (['exec', 'it'].includes(lower)) {
       roleSet.add('war_commander');
     }
   }
   // Every authenticated user is at least a pilot
-  roleSet.add('pilot');
+  // roleSet.add('pilot');
   return [...roleSet];
 }
 

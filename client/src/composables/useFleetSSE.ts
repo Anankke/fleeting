@@ -6,7 +6,7 @@
  * Auto-reconnects on disconnect with exponential backoff.
  */
 
-import { ref, onUnmounted, type Ref } from 'vue';
+import { ref, watch, onUnmounted, type Ref } from 'vue';
 
 export interface FleetAggregate {
   fleetSessionId: string;
@@ -20,7 +20,8 @@ export interface FleetAggregate {
   capDamageIn:    number;
   mined:          number;
   memberCount:    number;
-  hitQualityDistribution: Record<string, number>;
+  hitQualityDistribution:   Record<string, number>;
+  hitQualityDistributionIn: Record<string, number>;
   breakdown:      any[];
   memberSnapshots?: Record<string, any>;
 }
@@ -79,6 +80,12 @@ export function useFleetSSE(channelIds: Ref<string[]>) {
   }
 
   onUnmounted(disconnect);
+
+  // Auto-connect/reconnect whenever channelIds changes.
+  watch(channelIds, (ids) => {
+    disconnect();
+    if (ids.length) connect();
+  }, { immediate: true });
 
   return { aggregate, connected, error, connect, disconnect };
 }
