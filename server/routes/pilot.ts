@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../lib/auth.js';
 import { characterBelongsToUser } from '../db/queries/users.js';
-import { upsertFleetMember } from '../db/queries/members.js';
+import { upsertFleetMember, getLatestPresence } from '../db/queries/members.js';
+import * as mem from '../store/memcached.js';
 import * as snapshotStore from '../store/snapshotStore.js';
 import type { PilotSnapshot } from '../lib/aggregate.js';
 import { publish } from '../lib/nchanPublisher.js';
@@ -32,6 +33,10 @@ function sanitizeSnapshot(raw: Record<string, unknown>): PilotSnapshot {
   if (raw['hitQualityDistributionIn'] !== undefined) out['hitQualityDistributionIn'] = raw['hitQualityDistributionIn'];
   if (raw['percentiles'] !== undefined) out['percentiles'] = raw['percentiles'];
   if (Array.isArray(raw['breakdown'])) out['breakdown'] = raw['breakdown'];
+  // Identity & metadata — required for aggregate memberSnapshots keying and role classification
+  if (isFiniteNumber(raw['characterId']))   out['characterId']   = raw['characterId'];
+  if (isFiniteNumber(raw['shipTypeId']))    out['shipTypeId']    = raw['shipTypeId'];
+  if (isFiniteNumber(raw['solarSystemId'])) out['solarSystemId'] = raw['solarSystemId'];
   return out as unknown as PilotSnapshot;
 }
 
@@ -76,6 +81,22 @@ export default async function pilotRoutes(fastify: FastifyInstance) {
     });
 
     if (fleetSessionId) {
+      // Enrich snapshot with ESI-sourced metadata (ship type, location) if not already present.
+      // memberTracker writes this to member_presence every 30s; we cache in Memcached to avoid
+      // querying DB on every 2s POST.
+      if (snap.shipTypeId == null) {
+        const presenceKey = `presence:${fleetSessionId}:${characterId}`;
+        let cached = await mem.get<{ shipTypeId: number; solarSystemId: number }>(presenceKey);
+        if (!cached) {
+          cached = (await getLatestPresence(fleetSessionId as string, characterId as number)) ?? null;
+          if (cached) await mem.set(presenceKey, cached, 60);
+        }
+        if (cached) {
+          snap.shipTypeId = cached.shipTypeId;
+          snap.solarSystemId = cached.solarSystemId;
+        }
+      }
+
       await snapshotStore.setPilotSnapshot(fleetSessionId as string, characterId as number, snap);
       await snapshotStore.addFleetMember(fleetSessionId as string, characterId as number);
       // Record DB membership immediately so nchan auth can verify access without waiting for
