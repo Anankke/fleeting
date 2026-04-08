@@ -108,7 +108,13 @@ export default async function pilotRoutes(fastify: FastifyInstance) {
         publish(fleetSessionId as string, { ...fleetAgg, fleetSessionId }).catch(console.error);
       }
 
-      write({ fleetSessionId: fleetSessionId as string, characterId: characterId as number, snapshot: snapshot as Parameters<typeof write>[0]['snapshot'] }).catch(console.error);
+      write({
+        fleetSessionId: fleetSessionId as string,
+        characterId: characterId as number,
+        snapshot: snapshot as Parameters<typeof write>[0]['snapshot'],
+        shipTypeId: snap.shipTypeId,
+        solarSystemId: snap.solarSystemId,
+      }).catch(console.error);
     }
 
     return reply.code(204).send();
