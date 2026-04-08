@@ -22,8 +22,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
   fastify.get('/api/me', { preHandler: requireAuth }, async (req, reply) => {
     return reply.send({
       userId:     req.session.userId,
-      name:       req.session.name,
-      roles:      req.session.roles ?? [],
+      roles:      req.session.roles      ?? [],
       characters: req.session.characters ?? [],
     });
   });
