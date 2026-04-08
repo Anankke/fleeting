@@ -68,10 +68,14 @@ export async function write({
   fleetSessionId,
   characterId,
   snapshot,
+  shipTypeId,
+  solarSystemId,
 }: {
   fleetSessionId: string;
   characterId: number;
   snapshot: PilotSnapshot;
+  shipTypeId?: number;
+  solarSystemId?: number;
 }) {
   const now = new Date();
 
@@ -118,6 +122,8 @@ export async function write({
       dmgOutAvg:      p.avg,
       dmgOutMedian:   p.median,
       hitQualityDist: snapshot.hitQualityDistribution,
+      shipTypeId,
+      solarSystemId,
     }).catch((err: Error) =>
       console.error('[historyWriter] Snapshot insert error:', err.message),
     );

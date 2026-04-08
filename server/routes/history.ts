@@ -49,6 +49,19 @@ export default async function historyRoutes(fastify: FastifyInstance) {
     return reply.send(await snapshots.getForPilot(id, Number(charId)));
   });
 
+  // GET /api/history/fleet/:id/snapshot-at?t=ISO — fleet state at a point in time (scrub)
+  fastify.get('/api/history/fleet/:id/snapshot-at', { preHandler: requireFCOrWar }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const fleet = await getFleetById(id);
+    if (!fleet) return reply.code(404).send({ error: 'Fleet not found' });
+    const q = req.query as Record<string, string | undefined>;
+    const t = q['t'];
+    if (!t) return reply.code(400).send({ error: 'Missing t query param (ISO timestamp)' });
+    const at = new Date(t);
+    if (isNaN(at.getTime())) return reply.code(400).send({ error: 'Invalid timestamp' });
+    return reply.send(await snapshots.getFleetSnapshotAt(id, at));
+  });
+
   // GET /api/history/fleet/:id/presence
   fastify.get('/api/history/fleet/:id/presence', { preHandler: requireFCOrWar }, async (req, reply) => {
     const { id } = req.params as { id: string };
