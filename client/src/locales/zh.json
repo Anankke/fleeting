@@ -187,7 +187,8 @@
   "hqDiag": {
     "title": "命中质量",
     "noTurretData": "无炮台/无人机数据",
-    "trackingIssue": "可能存在追踪问题 — Grazes/Glances/Misses 占比高"
+    "trackingIssue": "可能存在追踪问题 — Grazes/Glances/Misses 占比高",
+    "missileOnly": "仅导弹或智能炸弹 — 无炮台命中质量差异"
   },
 
   "history": {

@@ -74,7 +74,7 @@
       </div>
 
       <!-- Realtime DPS chart -->
-      <DpsChart :snapshot="aggregate" :window-sec="windowSec" class="fleet-chart" />
+      <DpsChart :snapshot="aggregate" :window-sec="windowSec" class="fleet-chart" :class="{ 'alert-pulse': dpsDropAlert.active.value }" />
 
       <!-- Per-member table -->
       <MemberTable
@@ -89,6 +89,7 @@
           <FocusPanel
             :breakdown="aggregate?.breakdown ?? []"
             :total-dps-out="aggregate?.dpsOut ?? 0"
+            :alert-active="poorFocusAlert.active.value"
           />
           <BreakdownTable :rows="aggregate?.breakdown ?? []" />
         </div>

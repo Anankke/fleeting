@@ -187,7 +187,8 @@
   "hqDiag": {
     "title": "Hit Quality",
     "noTurretData": "No turret/drone data",
-    "trackingIssue": "Possible tracking issue — high Grazes/Glances/Misses"
+    "trackingIssue": "Possible tracking issue — high Grazes/Glances/Misses",
+    "missileOnly": "Missile-only or smartbomb — no turret quality variance"
   },
 
   "history": {

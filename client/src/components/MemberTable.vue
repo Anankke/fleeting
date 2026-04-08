@@ -9,6 +9,7 @@
     scroll-height="400px"
     :sort-field="'characterName'"
     :sort-order="1"
+    :row-class="rowClass"
   >
     <Column expander style="width: 2.5rem" />
     <Column field="characterName" :header="t('col.pilot')" sortable style="min-width:140px" />
@@ -169,12 +170,19 @@ function effStyle(row: any): Record<string, string> {
   const eff = efficiencyByIdx.value.get(row._idx);
   if (!eff) return { color: '#5b6f8e' };
   if (eff.role === 'logistics' || eff.role === 'support') return { color: '#5b6f8e' };
-  if (eff.isZeroDps) return { color: '#ef4444', fontWeight: 'bold' };
+  if (eff.isZeroDps) return { color: '#ef4444', fontWeight: 'bold', animation: 'blink-zero 1.5s ease-in-out infinite' };
   if (eff.efficiency === null) return { color: '#5b6f8e' };
   if (eff.efficiency > 1.2)  return { color: '#c8a84b' };
   if (eff.efficiency >= 0.8) return { color: '#22c55e' };
   if (eff.efficiency >= 0.4) return { color: '#eab308' };
   return { color: '#ef4444' };
+}
+
+// ── Row class for zero-DPS highlight ─────────────────────────────────────────
+function rowClass(data: any): string | undefined {
+  const eff = efficiencyByIdx.value.get(data._idx);
+  if (eff?.isZeroDps) return 'zero-dps-row';
+  return undefined;
 }
 
 // ── Hit Quality expandable row ───────────────────────────────────────────────
@@ -208,6 +216,8 @@ function hqDiagnostic(row: any): string | null {
     .filter(q => q.name === 'Grazes' || q.name === 'Glances Off' || q.name === 'Misses')
     .reduce((s, q) => s + q.count, 0);
   if (poorHits / total > 0.4) return t('hqDiag.trackingIssue');
+  // All "Hits" with no variance → likely missile-only or smartbomb
+  if (quals.length === 1 && quals[0].name === 'Hits') return t('hqDiag.missileOnly');
   return null;
 }
 </script>
@@ -261,5 +271,15 @@ function hqDiagnostic(row: any): string | null {
   font-size: 0.82rem;
   color: #5b6f8e;
   padding: 0.25rem 0;
+}
+
+/* ── Zero DPS row highlight ── */
+:deep(.zero-dps-row) {
+  background: rgba(239, 68, 68, 0.08) !important;
+}
+
+@keyframes blink-zero {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
 }
 </style>

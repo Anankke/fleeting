@@ -35,16 +35,17 @@ export function useAlertRule(
     return rule.operator === 'lt' ? value < rule.threshold : value > rule.threshold;
   }
 
-  watch(source, () => {
+  function evaluate() {
     if (!rule.enabled.value) {
       conditionSince = null;
       active.value   = false;
       return;
     }
 
-    // Gate: no data
+    // Gate: no data — clear alert immediately on disconnect
     if (!dataAvailable.value) {
       conditionSince = null;
+      active.value   = false;
       return;
     }
 
@@ -77,7 +78,13 @@ export function useAlertRule(
       conditionSince = null;
       active.value   = false;
     }
-  });
+  }
+
+  // Re-evaluate on data source change
+  watch(source, evaluate);
+  // Also re-evaluate when gates change, so disconnects/disengage clear alerts immediately
+  watch(dataAvailable, evaluate);
+  watch(engagementActive, evaluate);
 
   function acknowledge() {
     acknowledged.value = true;

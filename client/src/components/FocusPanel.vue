@@ -1,5 +1,5 @@
 <template>
-  <div class="focus-panel">
+  <div class="focus-panel" :class="{ 'alert-pulse': alertActive }">
     <div class="panel-header">
       <span class="panel-title">{{ t('focus.title') }}</span>
       <span class="coverage-badge" :class="{ 'low-coverage': result.coverage < 0.6 }">
@@ -59,6 +59,7 @@ const { t } = useTranslation();
 const props = defineProps<{
   breakdown: Array<{ targetName?: string; amount: number; pilotName?: string; [key: string]: unknown }>;
   totalDpsOut: number;
+  alertActive?: boolean;
 }>();
 
 const MAX_ROWS = 5;
@@ -201,5 +202,13 @@ function pct(v: number) {
 
 .sep {
   color: #3a4560;
+}
+
+@keyframes pulse-alert {
+  0%, 100% { border-color: #2a3050; }
+  50% { border-color: #ef4444; }
+}
+.alert-pulse {
+  animation: pulse-alert 2s ease-in-out infinite;
 }
 </style>
