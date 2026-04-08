@@ -5,14 +5,14 @@
       <div class="hq-half">
         <div class="hq-label">{{ t('hitQuality.outgoing') }}</div>
         <div v-if="totalOut === 0" class="hq-empty">{{ t('hitQuality.noData') }}</div>
-        <Doughnut v-else :data="outData" :options="makeOptions(totalOut)" class="hq-chart" />
+        <Doughnut v-else :key="`out-${totalOut}`" :data="outData" :options="outOptions" class="hq-chart" />
       </div>
 
       <!-- Incoming (dpsIn) -->
       <div class="hq-half">
         <div class="hq-label">{{ t('hitQuality.incoming') }}</div>
         <div v-if="totalIn === 0" class="hq-empty">{{ t('hitQuality.noData') }}</div>
-        <Doughnut v-else :data="inData" :options="makeOptions(totalIn)" class="hq-chart" />
+        <Doughnut v-else :key="`in-${totalIn}`" :data="inData" :options="inOptions" class="hq-chart" />
       </div>
     </div>
   </div>
@@ -69,6 +69,10 @@ const inData = computed(() => {
   return { labels, datasets: [{ data, backgroundColor: colors, borderColor: '#0d0f14', borderWidth: 2, hoverOffset: 6 }] };
 });
 
+// Memoize options to prevent unnecessary Chart.js recreations
+const outOptions = computed(() => makeOptions(totalOut.value));
+const inOptions = computed(() => makeOptions(totalIn.value));
+
 function makeOptions(total: number) {
   return {
     cutout: '62%',
@@ -119,9 +123,12 @@ function makeOptions(total: number) {
   border: 1px solid #2a3050;
   border-radius: 8px;
   padding: 0.75rem 1rem;
+  height: 350px;
+  display: flex;
+  flex-direction: column;
 }
-.hq-charts { display: flex; gap: 1.5rem; }
-.hq-half   { flex: 1; min-width: 0; }
+.hq-charts { display: flex; gap: 1.5rem; flex: 1; min-height: 0; }
+.hq-half   { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .hq-label  {
   font-size: 0.78rem;
   color: #8a9cc0;
@@ -131,5 +138,5 @@ function makeOptions(total: number) {
   text-align: center;
 }
 .hq-empty  { text-align: center; color: #5b6f8e; font-size: 0.88rem; padding: 1.5rem 0; }
-.hq-chart  { width: 100%; height: 260px; }
+.hq-chart  { width: 100%; flex: 1; min-height: 0; }
 </style>

@@ -14,11 +14,6 @@
     <template #header>
       <div class="table-header">
         <span class="table-title">{{ t('breakdown.title') }}</span>
-        <span
-          v-if="dominantHitQuality"
-          class="dom-quality-badge"
-          :style="{ color: hitQualityColor(dominantHitQuality) }"
-        >&#9679; {{ dominantHitQuality }}</span>
         <span class="table-hint">{{ t('breakdown.hint') }}</span>
       </div>
     </template>
@@ -53,6 +48,19 @@
       <template #body="{ data }">{{ fmtNum(data.amount) }}</template>
     </Column>
     <Column field="hits" :header="t('col.hits')" sortable style="min-width:55px" />
+    <Column :header="t('col.quality')" sortable style="min-width:100px">
+      <template #body="{ data }">
+        <Tag
+          v-if="getDominantQuality(data.hitQualityDistribution)"
+          :value="getDominantQuality(data.hitQualityDistribution)"
+          :pt="{ root: { style: {
+            background: hitQualityColor(getDominantQuality(data.hitQualityDistribution)!),
+            color: contrastColor(hitQualityColor(getDominantQuality(data.hitQualityDistribution)!)),
+            fontSize: '0.8rem',
+          } } }"
+        />
+      </template>
+    </Column>
   </DataTable>
 </template>
 
@@ -92,12 +100,25 @@ const CATEGORY_COLOR: Record<string, string> = {
   mined:         '#d4ac0d',
 };
 
-defineProps<{ rows: BreakdownRow[]; dominantHitQuality?: string | null }>();
+defineProps<{ rows: BreakdownRow[] }>();
 
 function fmtNum(n: number) {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M';
   if (n >= 1_000)     return (n / 1_000).toFixed(1) + 'K';
   return String(n);
+}
+
+/** Compute dominant hit quality for a single breakdown row */
+function getDominantQuality(dist: Record<string, number>): string | null {
+  let best: string | null = null;
+  let bestCount = 0;
+  for (const [quality, count] of Object.entries(dist)) {
+    if (count > bestCount) {
+      bestCount = count;
+      best = quality;
+    }
+  }
+  return best;
 }
 </script>
 
@@ -121,8 +142,5 @@ function fmtNum(n: number) {
   font-size: 0.82rem;
   color: #8a9cc0;
 }
-.dom-quality-badge {
-  font-size: 0.82rem;
-  font-weight: 700;
-}
+
 </style>

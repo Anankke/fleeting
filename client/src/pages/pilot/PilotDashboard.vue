@@ -99,7 +99,7 @@
       </div>
 
       <div class="bottom-row">
-        <BreakdownTable :rows="allSnap?.breakdown ?? []" :dominant-hit-quality="allSnap?.dominantHitQuality ?? null" class="breakdown" />
+        <BreakdownTable :rows="allSnap?.breakdown ?? []" class="breakdown" />
         <HitQualityBar
           :distribution-out="allSnap?.hitQualityDistribution ?? {}"
           :distribution-in="allSnap?.hitQualityDistributionIn ?? {}"
@@ -221,9 +221,10 @@ function onOverviewChange() {
 }
 
 // DPS engine — one per character, kept alive forever so switching back restores history.
-// Using reactive Record so Vue can track changes and per-char computed snapshots update.
+// NOTE: NOT using reactive() here because useDpsEngine returns Ref/Computed objects that
+// need to maintain their own reactivity. reactive() would wrap them improperly.
 type Engine = ReturnType<typeof useDpsEngine>;
-const charEngines = reactive<Record<number, Engine>>({});
+const charEngines: Record<number, Engine> = {};
 
 function getOrCreateEngine(charId: number): Engine {
   if (!charEngines[charId]) charEngines[charId] = useDpsEngine(windowSec);
@@ -303,15 +304,24 @@ function aggregateCharacterSnapshots(values: Array<DpsSnapshot | null>): DpsSnap
     }
   }
 
-  const breakdown = [...breakdownMap.values()].sort((a, b) => b.amount - a.amount);
-  if (breakdown.length > 100) breakdown.length = 100;
+  // Sort and cap to top 100 entries by amount to prevent memory bloat
+  const breakdown = [...breakdownMap.values()]
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 100)
+    .map(row => ({
+      ...row,
+      // Prune hitQualityDistribution to remove zero/insignificant entries
+      hitQualityDistribution: Object.fromEntries(
+        Object.entries(row.hitQualityDistribution).filter(([_, count]) => count > 0)
+      ),
+    }));
 
   return {
     ...sums,
     breakdown,
     hitQualityDistribution: outDist,
     hitQualityDistributionIn: inDist,
-    dominantHitQuality,
+    dominantHitQuality: null, // No longer used; per-row quality computed in BreakdownTable
     percentiles: EMPTY_PERCENTILES,
   };
 }
@@ -414,6 +424,15 @@ onEntries(entries => {
     byCharNorm.set(ownerNorm, arr);
   }
 
+  debugChar('onEntries:routing', {
+    knownCharIds: Array.from(charById.keys()),
+    knownCharNames: Array.from(charByName.keys()),
+    incomingByIdCount: byCharId.size,
+    incomingByIdKeys: Array.from(byCharId.keys()),
+    incomingByNameCount: byCharNorm.size,
+    incomingByNameKeys: Array.from(byCharNorm.keys()),
+  });
+
   const selectedId = selectedCharIdNum.value;
   const visibleEntries = selectedId != null
     ? (byCharId.get(selectedId)
@@ -445,12 +464,6 @@ onEntries(entries => {
     }
   }
 
-  // Deterministic fallback: if exactly one known character exists, route unmatched
-  // batches to that character (selection must not influence ingestion).
-  if (!matchedAnyOwner && chars.length === 1) {
-    getOrCreateEngine(chars[0].id).addEntries(entries);
-  }
-
   if (unmatchedOwners.length) {
     debugChar('onEntries:unmatchedOwners', {
       unmatchedOwners,
@@ -463,6 +476,26 @@ onEntries(entries => {
       knownCharacterIds: chars.map(c => c.id),
     });
   }
+
+  // Log which path visibleEntries took
+  const visiblePath = selectedId != null
+    ? (byCharId.has(selectedId) ? 'byId' : (byCharNorm.has(normalizeName(selectedCharName.value ?? '')) ? 'byName' : 'fallback'))
+    : 'noSelection';
+  debugChar('onEntries:visiblePath', { path: visiblePath, count: visibleEntries.length, selectedId });
+
+  // Check engine state
+  debugChar('onEntries:engines', {
+    engineCharIds: Object.keys(charEngines).map(Number),
+    selectedCharId: selectedCharIdNum.value,
+    selectedEngine: charEngines[selectedCharIdNum.value ?? 0] ? {
+      bufferLen: charEngines[selectedCharIdNum.value ?? 0].exportBuffer().length,
+      snapshotType: typeof charEngines[selectedCharIdNum.value ?? 0].snapshot,
+      snapshotValueType: typeof charEngines[selectedCharIdNum.value ?? 0].snapshot.value,
+      dpsOut: charEngines[selectedCharIdNum.value ?? 0].snapshot.value?.dpsOut,
+    } : null,
+    charSnapshots_value: charSnapshots.value[selectedCharIdNum.value ?? 0],
+    snap_value: snap.value,
+  });
 
   void persistPilotSessionCache();
 
@@ -508,8 +541,8 @@ let fleetPollTimer: ReturnType<typeof setInterval> | null = null;
 async function discoverFleet() {
   if (!selectedCharIdNum.value || !isOnline.value) return;
   try {
-    const data = await api.get<{ fleet?: { id: string } | null }>(`/api/fleet/discover?characterId=${selectedCharIdNum.value}`);
-    fleetInfo.value = data.fleet ? { fleetId: data.fleet.id } : null;
+    const data = await api.get<{ fleet_id?: string } | null>(`/api/fleet/discover?characterId=${selectedCharIdNum.value}`);
+    fleetInfo.value = data?.fleet_id ? { fleetId: data.fleet_id } : null;
   } catch {
     fleetInfo.value = null;
   }
@@ -523,7 +556,7 @@ async function uploadSnapshot() {
   try {
     await api.post('/api/pilot/data', {
       characterId: selectedCharIdNum.value,
-      fleetId: fleetInfo.value.fleetId,
+      fleetSessionId: fleetInfo.value.fleetId,
       snapshot: snap.value,
     });
   } catch {
