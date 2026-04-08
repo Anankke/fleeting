@@ -98,6 +98,9 @@ async function poll(
     if (status === 404) {
       console.warn(`[memberTracker] Fleet ${fleetSessionId} not found on ESI — stopping tracker`);
       stopTracking(fleetSessionId);
+    } else if (status === 401 || status === 403) {
+      console.warn(`[memberTracker] Auth failed (${status}) for fleet ${fleetSessionId} — stopping tracker. FC must re-open fleet to resume.`);
+      stopTracking(fleetSessionId);
     } else {
       console.error(
         `[memberTracker] Poll error for fleet ${fleetSessionId}:`,
