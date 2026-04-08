@@ -40,7 +40,13 @@ export default async function fleetRoutes(fastify: FastifyInstance) {
       fcCharacterId: fcCharacterId as number,
     });
 
-    fleets.createPartitionForFleet(fleet.id).catch(console.error);
+    try {
+      await fleets.createPartitionForFleet(fleet.id);
+    } catch (err) {
+      console.error('[fleet] Partition creation failed, rolling back fleet:', (err as Error).message);
+      await fleets.deleteFleet(fleet.id);
+      return reply.code(500).send({ error: 'Failed to initialize fleet storage' });
+    }
 
     if (eveFleetId) {
       const oidcAccessToken = (s['oidcAccessToken'] as string | undefined) ?? '';
