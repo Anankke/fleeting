@@ -9,8 +9,7 @@ import { getPresenceTimeline } from '../db/queries/members.js';
 import { getFleetById } from '../db/queries/fleets.js';
 
 function requireFCOrWar(req: FastifyRequest, reply: FastifyReply, done: (err?: Error) => void) {
-  const s = req.session as unknown as Record<string, unknown>;
-  const roles = s['roles'] as string[] | undefined;
+  const roles = req.session.roles;
   if (roles?.includes(ROLES.FC) || roles?.includes(ROLES.WAR_COMMANDER)) {
     return done();
   }

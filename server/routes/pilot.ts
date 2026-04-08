@@ -43,8 +43,8 @@ export default async function pilotRoutes(fastify: FastifyInstance) {
     if (!Number.isInteger(characterId) || characterId <= 0) {
       return reply.code(400).send({ error: 'Invalid characterId' });
     }
-    const s = req.session as unknown as Record<string, unknown>;
-    const owned = await characterBelongsToUser(s['userId'] as string, characterId);
+    if (!req.session.userId) return reply.code(401).send({ error: 'Unauthorized' });
+    const owned = await characterBelongsToUser(req.session.userId, characterId);
     if (!owned) return reply.code(403).send({ error: 'Character does not belong to your account' });
     try {
       const token  = await exchangeEveToken(characterId, req.session);
@@ -64,8 +64,8 @@ export default async function pilotRoutes(fastify: FastifyInstance) {
       return reply.code(400).send({ error: 'characterId and snapshot are required' });
     }
 
-    const s = req.session as unknown as Record<string, unknown>;
-    const owned = await characterBelongsToUser(s['userId'] as string, characterId as number);
+    if (!req.session.userId) return reply.code(401).send({ error: 'Unauthorized' });
+    const owned = await characterBelongsToUser(req.session.userId, characterId as number);
     if (!owned) {
       return reply.code(403).send({ error: 'Character does not belong to your account' });
     }
