@@ -20,8 +20,16 @@
 
     <div v-if="!characters.length" class="empty">{{ t('overview.noCharacters') }}</div>
 
-    <div v-else class="char-list">
-      <div v-for="char in characters" :key="char.id" class="char-row">
+    <div v-else class="search-row">
+      <InputText
+        v-model="searchText"
+        :placeholder="t('overview.searchPlaceholder')"
+        class="search-input"
+      />
+    </div>
+
+    <div v-if="filteredCharacters.length" class="char-list">
+      <div v-for="char in filteredCharacters" :key="char.id" class="char-row">
         <!-- Left: character name + loaded status -->
         <div class="char-info">
           <span class="char-name">{{ char.name }}</span>
@@ -78,6 +86,7 @@
         </div>
       </div>
     </div>
+    <div v-else class="empty">{{ t('overview.noCharacters') }}</div>
 
     <template #footer>
       <Button :label="t('overview.close')" icon="pi pi-times" @click="visible = false" />
@@ -91,6 +100,7 @@ import { useTranslation } from 'i18next-vue';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import Select from 'primevue/select';
+import InputText from 'primevue/inputtext';
 import { useToast } from 'primevue/usetoast';
 import { useOverviewSettings } from '@/composables/useOverviewSettings';
 import type { MeResponse } from '@/api/client';
@@ -102,12 +112,21 @@ const { t } = useTranslation();
 const toast     = useToast();
 const visible   = ref(false);
 const uploading = ref<number | null>(null);
+const searchText = ref('');
 
 const { overviews, upload, duplicate, reset } = useOverviewSettings();
 const characters = computed(() => props.me?.characters ?? []);
+const filteredCharacters = computed(() => {
+  const q = searchText.value.trim().toLocaleLowerCase();
+  if (!q) return characters.value;
+  return characters.value.filter(c => c.name.toLocaleLowerCase().includes(q));
+});
 const dupSelections = reactive<Record<number, number | null>>({});
 
-function open() { visible.value = true; }
+function open() {
+  searchText.value = '';
+  visible.value = true;
+}
 
 function sourceCandidates(excludeId: number) {
   return characters.value.filter(c => c.id !== excludeId && overviews.value[c.id]);
@@ -179,6 +198,17 @@ const dialogPt = {
   display: flex;
   flex-direction: column;
   gap: 0;
+  max-height: 56vh;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.search-row {
+  margin-bottom: 0.75rem;
+}
+
+.search-input {
+  width: 100%;
 }
 
 .char-row {

@@ -35,8 +35,8 @@ function debugI18n(...args: unknown[]) {
 }
 
 const appEnv = (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {};
-const tolgeeApiUrl = appEnv.VITE_TOLGEE_API_URL?.trim();
-const tolgeeApiKey = appEnv.VITE_TOLGEE_API_KEY?.trim();
+const tolgeeApiUrl = appEnv.PUBLIC_TOLGEE_API_URL?.trim();
+const tolgeeApiKey = appEnv.PUBLIC_TOLGEE_API_KEY?.trim();
 
 function readSavedLanguagePreference(): SupportedLang | undefined {
   const saved = localStorage.getItem(LANG_PREFERENCE_KEY)?.split('-')[0].toLowerCase();

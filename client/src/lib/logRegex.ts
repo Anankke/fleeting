@@ -44,6 +44,8 @@ export interface LogEntry {
   occurredAt: string;
   /** Character name whose log file this entry came from — always the log file owner. */
   logOwner:   string;
+  /** Character ID parsed from the source filename when available. */
+  logOwnerId?: number | null;
 }
 
 // ── Log file header ───────────────────────────────────────────────────────────

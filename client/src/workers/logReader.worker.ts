@@ -20,12 +20,13 @@ import { parseLine, parseHeader, buildOverviewRegex, DEFAULT_PILOT_WEAPON_RE, ty
 import { load as yamlLoad } from 'js-yaml';
 import type { LogReaderScanState } from '../lib/logCache';
 
-const LOG_FILE_RE = /^\d{8}_\d{6}_\d+\.txt$/;
-const LOG_POLL_MS = parseInt(import.meta.env.VITE_LOG_POLL_MS ?? '2000', 10);
+const LOG_FILE_RE = /^(\d{8})_(\d{6})_(\d+)\.txt$/;
+const LOG_POLL_MS = parseInt(import.meta.env.PUBLIC_LOG_POLL_MS ?? '2000', 10);
 
 let dirHandle: FileSystemDirectoryHandle | null = null;
 const fileOffsets = new Map<string, number>();
 const fileChars   = new Map<string, string>(); // filename → character name
+const fileCharIds = new Map<string, number>(); // filename → character id
 const fileLangs   = new Map<string, string>(); // filename → language
 const fileSizes   = new Map<string, number>(); // filename → last known size
 let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -56,6 +57,7 @@ async function tick() {
       if (seenNames.has(name)) continue;
       fileOffsets.delete(name);
       fileChars.delete(name);
+      fileCharIds.delete(name);
       fileLangs.delete(name);
       fileSizes.delete(name);
     }
@@ -80,6 +82,9 @@ async function tick() {
         const header = parseHeader(headerText);
         fileChars.set(name, header?.characterName ?? '');
         fileLangs.set(name, header?.language ?? 'english');
+        const match = LOG_FILE_RE.exec(name);
+        const parsedId = match ? Number(match[3]) : NaN;
+        if (Number.isFinite(parsedId)) fileCharIds.set(name, parsedId);
       }
 
       fileSizes.set(name, total);
@@ -91,12 +96,13 @@ async function tick() {
       fileSizes.set(name, total);
 
       const charName = fileChars.get(name) ?? '';
+      const charId   = fileCharIds.get(name) ?? null;
       const lang     = fileLangs.get(name) ?? 'english';
       const re       = perCharRe.get(charName) ?? fallbackRe;
 
       for (const line of text.split('\n')) {
         const entry = parseLine(line, charName, lang, re);
-        if (entry) allEntries.push(entry);
+        if (entry) allEntries.push({ ...entry, logOwnerId: charId });
       }
     }
 
@@ -127,12 +133,16 @@ function buildScanState(): LogReaderScanState {
 function restoreScanState(state: LogReaderScanState | undefined) {
   fileOffsets.clear();
   fileChars.clear();
+  fileCharIds.clear();
   fileLangs.clear();
   fileSizes.clear();
   if (!state) return;
   for (const [name, entry] of Object.entries(state)) {
     fileOffsets.set(name, entry.offset);
     fileChars.set(name, entry.characterName);
+    const match = LOG_FILE_RE.exec(name);
+    const parsedId = match ? Number(match[3]) : NaN;
+    if (Number.isFinite(parsedId)) fileCharIds.set(name, parsedId);
     fileLangs.set(name, entry.language);
     fileSizes.set(name, entry.size);
   }
@@ -143,6 +153,7 @@ function stop() {
   dirHandle = null;
   fileOffsets.clear();
   fileChars.clear();
+  fileCharIds.clear();
   fileLangs.clear();
   fileSizes.clear();
   // Preserve perCharRe across stop/start so re-opening the log dir keeps overviews

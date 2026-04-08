@@ -11,7 +11,7 @@
  * The window duration is configurable (default 60s).
  */
 
-import { ref, computed, type Ref } from 'vue';
+import { ref, computed, onScopeDispose, type Ref } from 'vue';
 import type { LogEntry, Category } from '../lib/logRegex';
 import { emptyDistribution } from '../lib/hitQuality';
 
@@ -58,7 +58,33 @@ export interface BufferedLogEntry {
   entry:     LogEntry;
 }
 
+// Shared reactive clock so snapshot computed values update even when no new logs arrive.
+const DPS_TICK_MS = parseInt(import.meta.env.PUBLIC_DPS_TICK_MS ?? '1000', 10);
+const nowMs = ref(Date.now());
+let tickTimer: ReturnType<typeof setInterval> | null = null;
+let tickUsers = 0;
+
+function retainClock() {
+  tickUsers++;
+  if (!tickTimer) {
+    tickTimer = setInterval(() => {
+      nowMs.value = Date.now();
+    }, DPS_TICK_MS);
+  }
+}
+
+function releaseClock() {
+  tickUsers = Math.max(0, tickUsers - 1);
+  if (tickUsers === 0 && tickTimer) {
+    clearInterval(tickTimer);
+    tickTimer = null;
+  }
+}
+
 export function useDpsEngine(windowSecondsRef?: Ref<number>) {
+  retainClock();
+  onScopeDispose(releaseClock);
+
   const defaultWindow = ref(60);
   const windowSec = windowSecondsRef ?? defaultWindow;
 
@@ -94,7 +120,7 @@ export function useDpsEngine(windowSecondsRef?: Ref<number>) {
 
   const snapshot = computed<DpsSnapshot>(() => {
     const win = windowSec.value;
-    const now = Date.now();
+    const now = nowMs.value;
     const cutoff = now - win * 1000;
 
     // Sum amounts by category
@@ -106,7 +132,7 @@ export function useDpsEngine(windowSecondsRef?: Ref<number>) {
     const distIn = emptyDistribution(); // incoming (dpsIn)
     const dpsOutAmounts: number[] = [];
     // Short window for dominant quality: configurable window or the full window if smaller
-    const DOMINANT_QUALITY_WINDOW_MS = parseInt(import.meta.env.VITE_DOMINANT_QUALITY_WINDOW_MS ?? '15000', 10);
+    const DOMINANT_QUALITY_WINDOW_MS = parseInt(import.meta.env.PUBLIC_DOMINANT_QUALITY_WINDOW_MS ?? '15000', 10);
     const shortCutoff = now - Math.min(DOMINANT_QUALITY_WINDOW_MS, win * 1000);
     const shortDist: Record<string, number> = {};
     // Group hits by distinct (pilotName, weaponType, shipType, category, targetName)

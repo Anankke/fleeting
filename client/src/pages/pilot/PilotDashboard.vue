@@ -42,6 +42,24 @@
         <label>{{ t('pilot.dpsWindow') }}
           <InputNumber v-model="windowSec" :min="10" :max="300" :step="5" show-buttons />
         </label>
+        <label>{{ t('pilot.chartMetric') }}
+          <Select
+            v-model="selectedMetric"
+            :options="metricOptions"
+            option-label="label"
+            option-value="value"
+            class="chart-setting-select"
+          />
+        </label>
+        <label>{{ t('pilot.chartTickSec') }}
+          <InputNumber v-model="chartTickSec" :min="1" :max="10" :step="1" show-buttons />
+        </label>
+        <label>{{ t('pilot.aggregateHistoryMin') }}
+          <InputNumber v-model="aggregateHistoryMin" :min="1" :max="30" :step="1" show-buttons />
+        </label>
+        <label>{{ t('pilot.characterHistoryMin') }}
+          <InputNumber v-model="characterHistoryMin" :min="1" :max="30" :step="1" show-buttons />
+        </label>
         <span v-if="fleetInfo" class="fleet-badge">
           {{ t('pilot.fleetUploading', { id: fleetInfo.fleetId }) }}
         </span>
@@ -55,7 +73,12 @@
         <div class="chart-section">
           <div class="section-heading">{{ t('pilot.allCharsAggregate') }}</div>
           <StatsStrip :snapshot="allSnap" />
-          <DpsChart :snapshot="allSnap" :window-sec="windowSec" />
+          <DpsChart
+            :snapshot="allSnap"
+            :metric="selectedMetric"
+            :sample-ms="chartTickMs"
+            :history-sec="aggregateHistorySec"
+          />
         </div>
 
         <!-- Per-character live stats (right) -->
@@ -67,17 +90,19 @@
             <DpsChart
               v-show="char.id === selectedCharIdNum"
               :snapshot="charSnapshots[char.id] ?? null"
-              :window-sec="windowSec"
+              :metric="selectedMetric"
+              :sample-ms="chartTickMs"
+              :history-sec="characterHistorySec"
             />
           </template>
         </div>
       </div>
 
       <div class="bottom-row">
-        <BreakdownTable :rows="snap?.breakdown ?? []" :dominant-hit-quality="snap?.dominantHitQuality ?? null" class="breakdown" />
+        <BreakdownTable :rows="allSnap?.breakdown ?? []" :dominant-hit-quality="allSnap?.dominantHitQuality ?? null" class="breakdown" />
         <HitQualityBar
-          :distribution-out="snap?.hitQualityDistribution ?? {}"
-          :distribution-in="snap?.hitQualityDistributionIn ?? {}"
+          :distribution-out="allSnap?.hitQualityDistribution ?? {}"
+          :distribution-in="allSnap?.hitQualityDistributionIn ?? {}"
           class="hq-bar"
         />
       </div>
@@ -103,8 +128,9 @@ import { clearMeCache } from '@/router';
 import { IDB_KEYS, deleteIdbValue, loadIdbValue, saveIdbValue, type PilotSessionCache } from '@/lib/logCache';
 import { useLogReader } from '@/composables/useLogReader';
 import { useOverviewSettings } from '@/composables/useOverviewSettings';
-import { useDpsEngine } from '@/composables/useDpsEngine';
+import { useDpsEngine, type BreakdownEntry, type DpsSnapshot } from '@/composables/useDpsEngine';
 import type { LogEntry } from '@/lib/logRegex';
+import { emptyDistribution } from '@/lib/hitQuality';
 import AppNav from '@/components/AppNav.vue';
 import DpsChart from '@/components/DpsChart.vue';
 import StatsStrip from '@/components/StatsStrip.vue';
@@ -112,12 +138,17 @@ import BreakdownTable from '@/components/BreakdownTable.vue';
 import HitQualityBar from '@/components/HitQualityBar.vue';
 import OverviewManager from '@/components/OverviewManager.vue';
 import LiveEventLog from '@/components/LiveEventLog.vue';
+import type { ChartMetricKey } from '@/components/DpsChart.vue';
 
 const toast  = useToast();
 const { t } = useTranslation();
 const me     = ref<MeResponse | null>(null);
 const selectedCharId = ref<number | string | null>(null);
 const windowSec = ref(60);
+const selectedMetric = ref<ChartMetricKey>('dpsOut');
+const chartTickSec = ref(1);
+const aggregateHistoryMin = ref(5);
+const characterHistoryMin = ref(5);
 const fleetInfo = ref<{ fleetId: string } | null>(null);
 const isOnline  = ref(false);
 const PILOT_SESSION_MAX_AGE_MS = 10 * 60 * 1000;
@@ -152,6 +183,22 @@ function normalizeName(name: string): string {
 const characterOptions = computed(() =>
   (me.value?.characters ?? []).map(c => ({ label: c.name, value: c.id })),
 );
+
+const metricOptions = computed(() => [
+  { label: t('stat.dpsOut'), value: 'dpsOut' },
+  { label: t('stat.dpsIn'), value: 'dpsIn' },
+  { label: t('stat.logiOut'), value: 'logiOut' },
+  { label: t('stat.logiIn'), value: 'logiIn' },
+  { label: t('categoryValue.capTransfered'), value: 'capTransfered' },
+  { label: t('categoryValue.capRecieved'), value: 'capRecieved' },
+  { label: t('categoryValue.capDamageOut'), value: 'capDamageOut' },
+  { label: t('categoryValue.capDamageIn'), value: 'capDamageIn' },
+  { label: t('categoryValue.mined'), value: 'mined' },
+] as Array<{ label: string; value: ChartMetricKey }>);
+
+const chartTickMs = computed(() => Math.max(1, Number(chartTickSec.value || 1)) * 1000);
+const aggregateHistorySec = computed(() => Math.max(1, Number(aggregateHistoryMin.value || 5)) * 60);
+const characterHistorySec = computed(() => Math.max(1, Number(characterHistoryMin.value || 5)) * 60);
 
 // Log reader
 const { running: logRunning, isLoading: logLoading, pickDirectory: openDirectory, tryRestoreDirectory, forgetDirectory, stop: stopLogs, syncOverviews, onEntries } = useLogReader();
@@ -195,9 +242,83 @@ const charSnapshots = computed<Record<number, typeof charEngines[number]['snapsh
 // Snapshot for whichever character is currently selected
 const snap = computed(() => selectedCharIdNum.value != null ? (charSnapshots.value[selectedCharIdNum.value] ?? null) : null);
 
-// DPS engine — aggregate across ALL characters (never reset on char switch)
-const allEngine = useDpsEngine(windowSec);
-const { addEntries: addEntriesAll, snapshot: allSnap } = allEngine;
+const EMPTY_PERCENTILES = { p50: 0, p90: 0, p95: 0, p99: 0, avg: 0, median: 0 };
+
+function aggregateCharacterSnapshots(values: Array<DpsSnapshot | null>): DpsSnapshot {
+  const outDist = emptyDistribution();
+  const inDist = emptyDistribution();
+  const breakdownMap = new Map<string, BreakdownEntry>();
+  const sums = {
+    dpsOut: 0,
+    dpsIn: 0,
+    logiOut: 0,
+    logiIn: 0,
+    capTransfered: 0,
+    capRecieved: 0,
+    capDamageOut: 0,
+    capDamageIn: 0,
+    mined: 0,
+  };
+
+  for (const s of values) {
+    if (!s) continue;
+    sums.dpsOut += s.dpsOut;
+    sums.dpsIn += s.dpsIn;
+    sums.logiOut += s.logiOut;
+    sums.logiIn += s.logiIn;
+    sums.capTransfered += s.capTransfered;
+    sums.capRecieved += s.capRecieved;
+    sums.capDamageOut += s.capDamageOut;
+    sums.capDamageIn += s.capDamageIn;
+    sums.mined += s.mined;
+
+    for (const [k, v] of Object.entries(s.hitQualityDistribution)) outDist[k] = (outDist[k] ?? 0) + v;
+    for (const [k, v] of Object.entries(s.hitQualityDistributionIn)) inDist[k] = (inDist[k] ?? 0) + v;
+
+    for (const row of s.breakdown) {
+      const key = `${row.pilotName}\x00${row.weaponType}\x00${row.shipType}\x00${row.category}\x00${row.targetName}`;
+      const existing = breakdownMap.get(key);
+      if (!existing) {
+        breakdownMap.set(key, {
+          ...row,
+          hitQualityDistribution: { ...row.hitQualityDistribution },
+        });
+        continue;
+      }
+      existing.amount += row.amount;
+      existing.hits += row.hits;
+      if (row.occurredAt > existing.occurredAt) existing.occurredAt = row.occurredAt;
+      for (const [hq, c] of Object.entries(row.hitQualityDistribution)) {
+        existing.hitQualityDistribution[hq] = (existing.hitQualityDistribution[hq] ?? 0) + c;
+      }
+    }
+  }
+
+  let dominantHitQuality: string | null = null;
+  let best = 0;
+  for (const [k, v] of Object.entries(outDist)) {
+    if (v > best) {
+      best = v;
+      dominantHitQuality = k;
+    }
+  }
+
+  const breakdown = [...breakdownMap.values()].sort((a, b) => b.amount - a.amount);
+  if (breakdown.length > 100) breakdown.length = 100;
+
+  return {
+    ...sums,
+    breakdown,
+    hitQualityDistribution: outDist,
+    hitQualityDistributionIn: inDist,
+    dominantHitQuality,
+    percentiles: EMPTY_PERCENTILES,
+  };
+}
+
+const allSnap = computed<DpsSnapshot>(() =>
+  aggregateCharacterSnapshots(Object.values(charSnapshots.value)),
+);
 
 const selectedCharName = computed(() =>
   me.value?.characters.find(c => c.id === selectedCharIdNum.value)?.name ?? null,
@@ -228,11 +349,14 @@ async function persistPilotSessionCache() {
   for (const [charId, engine] of Object.entries(charEngines)) {
     perCharacterEntries[charId] = engine.exportBuffer();
   }
+  const allEntries = Object.values(perCharacterEntries)
+    .flat()
+    .sort((a, b) => a.timestamp - b.timestamp);
   const payload: PilotSessionCache = {
     version: 1,
     cachedAt: Date.now(),
     selectedCharId: selectedCharId.value,
-    allEntries: allEngine.exportBuffer(),
+    allEntries,
     perCharacterEntries,
     liveEntries: liveLogRef.value?.snapshot() ?? [],
   };
@@ -247,7 +371,6 @@ async function restorePilotSessionCache() {
     return false;
   }
 
-  allEngine.restoreBuffer(cache.allEntries);
   for (const [charId, entries] of Object.entries(cache.perCharacterEntries)) {
     getOrCreateEngine(Number(charId)).restoreBuffer(entries);
   }
@@ -271,37 +394,73 @@ onEntries(entries => {
     selectedCharIdNum: selectedCharIdNum.value,
     selectedCharName: selectedCharName.value,
   });
-  // All entries from every character go into the aggregate engine.
-  addEntriesAll(entries);
-  const selectedOwner = normalizeName(selectedCharName.value ?? '');
-  const visibleEntries = selectedOwner
-    ? entries.filter(e => normalizeName(e.logOwner) === selectedOwner)
+  const chars = me.value?.characters ?? [];
+  const charById = new Map(chars.map(c => [c.id, c]));
+  const charByName = new Map(chars.map(c => [normalizeName(c.name), c]));
+
+  const byCharId = new Map<number, LogEntry[]>();
+  const byCharNorm = new Map<string, LogEntry[]>();
+  for (const e of entries) {
+    if (e.logOwnerId != null && Number.isFinite(e.logOwnerId)) {
+      const ownerId = Number(e.logOwnerId);
+      const arrById = byCharId.get(ownerId) ?? [];
+      arrById.push(e);
+      byCharId.set(ownerId, arrById);
+      continue;
+    }
+    const ownerNorm = normalizeName(e.logOwner);
+    const arr = byCharNorm.get(ownerNorm) ?? [];
+    arr.push(e);
+    byCharNorm.set(ownerNorm, arr);
+  }
+
+  const selectedId = selectedCharIdNum.value;
+  const visibleEntries = selectedId != null
+    ? (byCharId.get(selectedId)
+      ?? byCharNorm.get(normalizeName(selectedCharName.value ?? ''))
+      ?? entries)
     : entries;
   liveLogRef.value?.push(visibleEntries);
 
-  // Route each entry into the per-character engine matching logOwner.
-  const byChar = new Map<string, typeof entries>();
-  for (const e of entries) {
-    const arr = byChar.get(e.logOwner) ?? [];
-    arr.push(e);
-    byChar.set(e.logOwner, arr);
-  }
-  const chars = me.value?.characters ?? [];
-  const charByName = new Map(chars.map(c => [normalizeName(c.name), c]));
-  const unmatchedOwners: string[] = [];
-  for (const [ownerName, ownerEntries] of byChar) {
-    const char = charByName.get(normalizeName(ownerName));
+  const unmatchedIds: number[] = [];
+  let matchedAnyOwner = false;
+  for (const [ownerId, ownerEntries] of byCharId) {
+    const char = charById.get(ownerId);
     if (char) {
       getOrCreateEngine(char.id).addEntries(ownerEntries);
+      matchedAnyOwner = true;
     } else {
-      unmatchedOwners.push(ownerName);
+      unmatchedIds.push(ownerId);
     }
+  }
+
+  const unmatchedOwners: string[] = [];
+  for (const [ownerNorm, ownerEntries] of byCharNorm) {
+    const char = charByName.get(ownerNorm);
+    if (char) {
+      getOrCreateEngine(char.id).addEntries(ownerEntries);
+      matchedAnyOwner = true;
+    } else {
+      unmatchedOwners.push(ownerNorm);
+    }
+  }
+
+  // Deterministic fallback: if exactly one known character exists, route unmatched
+  // batches to that character (selection must not influence ingestion).
+  if (!matchedAnyOwner && chars.length === 1) {
+    getOrCreateEngine(chars[0].id).addEntries(entries);
   }
 
   if (unmatchedOwners.length) {
     debugChar('onEntries:unmatchedOwners', {
       unmatchedOwners,
       knownCharacters: chars.map(c => c.name),
+    });
+  }
+  if (unmatchedIds.length) {
+    debugChar('onEntries:unmatchedIds', {
+      unmatchedIds,
+      knownCharacterIds: chars.map(c => c.id),
     });
   }
 
@@ -312,9 +471,9 @@ onEntries(entries => {
 
 // Online status polling — check every 60 s; gates all fleet endpoint calls
 const appEnv = (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {};
-const ONLINE_POLL_MS      = parseInt(appEnv.VITE_ONLINE_POLL_MS      ?? '60000', 10);
-const UPLOAD_INTERVAL_MS  = parseInt(appEnv.VITE_UPLOAD_INTERVAL_MS  ?? '2000',  10);
-const FLEET_POLL_MS       = parseInt(appEnv.VITE_FLEET_POLL_MS       ?? '30000', 10);
+const ONLINE_POLL_MS      = parseInt(appEnv.PUBLIC_ONLINE_POLL_MS      ?? '60000', 10);
+const UPLOAD_INTERVAL_MS  = parseInt(appEnv.PUBLIC_UPLOAD_INTERVAL_MS  ?? '2000',  10);
+const FLEET_POLL_MS       = parseInt(appEnv.PUBLIC_FLEET_POLL_MS       ?? '30000', 10);
 let onlinePollTimer: ReturnType<typeof setInterval> | null = null;
 
 async function checkOnlineStatus() {
@@ -451,6 +610,7 @@ onUnmounted(() => {
 
 .pilot-dashboard { display: flex; flex-direction: column; min-height: 100vh; background: var(--eve-bg); color: var(--eve-text); }
 .char-select { min-width: 180px; }
+.chart-setting-select { min-width: 180px; }
 main { padding: 1rem 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
 .settings-bar { display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap; }
 .fleet-badge {

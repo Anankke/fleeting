@@ -11,16 +11,41 @@ import { HIT_QUALITY_COLOR, HIT_QUALITIES } from '@/lib/hitQuality';
 /** Minimal duck-typed snapshot — works with DpsSnapshot and FleetAggregate alike. */
 export interface ChartSnapshot {
   dpsOut: number;
+  dpsIn: number;
+  logiOut: number;
+  logiIn: number;
+  capTransfered: number;
+  capRecieved: number;
+  capDamageOut: number;
+  capDamageIn: number;
+  mined: number;
+  dominantHitQuality?: string | null;
   hitQualityDistribution: Record<string, number>;
 }
 
+export type ChartMetricKey =
+  | 'dpsOut'
+  | 'dpsIn'
+  | 'logiOut'
+  | 'logiIn'
+  | 'capTransfered'
+  | 'capRecieved'
+  | 'capDamageOut'
+  | 'capDamageIn'
+  | 'mined';
+
 const props = defineProps<{
   snapshot: ChartSnapshot | null;
-  windowSec?: number;
+  metric?: ChartMetricKey;
+  historySec?: number;
+  sampleMs?: number;
 }>();
 
 const DEFAULT_STROKE = '#7eb8ff';
 const DEFAULT_FILL   = 'rgba(126,184,255,0.15)';
+const DEFAULT_METRIC: ChartMetricKey = 'dpsOut';
+const DEFAULT_HISTORY_SEC = 300;
+const DEFAULT_SAMPLE_MS = 1000;
 
 /** Returns the color of the most frequently occurring hit quality, or the default. */
 function dominantColor(dist: Record<string, number>): { stroke: string; fill: string } {
@@ -39,39 +64,62 @@ function dominantColor(dist: Record<string, number>): { stroke: string; fill: st
   return { stroke: hex, fill: `rgba(${r},${g},${b},0.18)` };
 }
 
+function parseHexColor(hex: string): [number, number, number] {
+  const clean = hex.startsWith('#') ? hex.slice(1) : hex;
+  return [
+    parseInt(clean.slice(0, 2), 16),
+    parseInt(clean.slice(2, 4), 16),
+    parseInt(clean.slice(4, 6), 16),
+  ];
+}
+
+function blendHex(from: string, to: string, t: number): string {
+  const [fr, fg, fb] = parseHexColor(from);
+  const [tr, tg, tb] = parseHexColor(to);
+  const r = Math.round(fr + (tr - fr) * t);
+  const g = Math.round(fg + (tg - fg) * t);
+  const b = Math.round(fb + (tb - fb) * t);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
+
+function readMetric(snap: ChartSnapshot | null, metric: ChartMetricKey): number {
+  if (!snap) return 0;
+  return Number(snap[metric] ?? 0);
+}
+
 const el  = ref<HTMLDivElement | null>(null);
 let chart: uPlot | null = null;
+let sampleTimer: ReturnType<typeof setInterval> | null = null;
 
 // Mutable color state read by series stroke/fill functions each redraw
 let activeStroke = DEFAULT_STROKE;
 let activeFill   = DEFAULT_FILL;
 
-// Circular ring buffer of (timestamp, dps) pairs
-const MAX_POINTS = 600;
-const tsArr  = new Float64Array(MAX_POINTS);
-const dpsArr = new Float64Array(MAX_POINTS);
-let head = 0, count = 0;
+// Fixed-timer history points
+const tsPoints: number[] = [];
+const metricPoints: Record<ChartMetricKey, number[]> = {
+  dpsOut: [],
+  dpsIn: [],
+  logiOut: [],
+  logiIn: [],
+  capTransfered: [],
+  capRecieved: [],
+  capDamageOut: [],
+  capDamageIn: [],
+  mined: [],
+};
 
 function clearBuffer() {
-  head = 0;
-  count = 0;
-  tsArr.fill(0);
-  dpsArr.fill(0);
+  tsPoints.length = 0;
+  for (const values of Object.values(metricPoints)) values.length = 0;
   if (chart) chart.setData([[], []]);
 }
 
 defineExpose({ clear: clearBuffer });
 
 function buildData(): uPlot.AlignedData {
-  const n = Math.min(count, MAX_POINTS);
-  const ts  = new Array<number>(n);
-  const dps = new Array<number>(n);
-  for (let i = 0; i < n; i++) {
-    const idx = (head - n + i + MAX_POINTS) % MAX_POINTS;
-    ts[i]  = tsArr[idx];
-    dps[i] = dpsArr[idx];
-  }
-  return [ts, dps];
+  const metric = props.metric ?? DEFAULT_METRIC;
+  return [tsPoints.slice(), metricPoints[metric].slice()];
 }
 
 function initChart() {
@@ -83,10 +131,11 @@ function initChart() {
     series: [
       {},
       {
-        label: 'DPS',
+        label: 'Metric',
         stroke: () => activeStroke,
         fill:   () => activeFill,
         width: 2,
+        points: { show: false },
       },
     ],
     axes: [
@@ -99,20 +148,51 @@ function initChart() {
   chart = new uPlot(opts, buildData(), el.value);
 }
 
-watch(() => props.snapshot, (snap) => {
-  if (!snap) return;
-  const ts = Date.now() / 1000;
-  tsArr[head]  = ts;
-  dpsArr[head] = snap.dpsOut;
-  head = (head + 1) % MAX_POINTS;
-  if (count < MAX_POINTS) count++;
-  if (chart) {
-    const { stroke, fill } = dominantColor(snap.hitQualityDistribution);
-    activeStroke = stroke;
-    activeFill   = fill;
-    chart.setData(buildData());
+function sampleTick() {
+  const metric = props.metric ?? DEFAULT_METRIC;
+  const nowSec = Date.now() / 1000;
+  const historySec = Math.max(30, props.historySec ?? DEFAULT_HISTORY_SEC);
+  const cutoff = nowSec - historySec;
+
+  tsPoints.push(nowSec);
+  for (const key of Object.keys(metricPoints) as ChartMetricKey[]) {
+    metricPoints[key].push(readMetric(props.snapshot, key));
   }
+
+  while (tsPoints.length > 0 && tsPoints[0] < cutoff) {
+    tsPoints.shift();
+    for (const values of Object.values(metricPoints)) values.shift();
+  }
+
+  const target = dominantColor(props.snapshot?.hitQualityDistribution ?? {});
+  activeStroke = blendHex(activeStroke, target.stroke, 0.25);
+  const [r, g, b] = parseHexColor(activeStroke);
+  activeFill = `rgba(${r},${g},${b},0.18)`;
+
+  if (!chart) return;
+  chart.setData(buildData());
+  chart.setScale('x', { min: cutoff, max: nowSec });
+}
+
+function restartTimer() {
+  if (sampleTimer) {
+    clearInterval(sampleTimer);
+    sampleTimer = null;
+  }
+  const sampleMs = Math.max(250, props.sampleMs ?? DEFAULT_SAMPLE_MS);
+  sampleTick();
+  sampleTimer = setInterval(sampleTick, sampleMs);
+}
+
+watch(() => props.sampleMs, restartTimer);
+watch(() => props.metric, () => {
+  if (!chart) return;
+  const nowSec = Date.now() / 1000;
+  const historySec = Math.max(30, props.historySec ?? DEFAULT_HISTORY_SEC);
+  chart.setData(buildData());
+  chart.setScale('x', { min: nowSec - historySec, max: nowSec });
 });
+watch(() => props.historySec, () => sampleTick());
 
 const ro = new ResizeObserver((entries) => {
   const width = entries[0]?.contentRect.width;
@@ -121,10 +201,12 @@ const ro = new ResizeObserver((entries) => {
 
 onMounted(() => {
   initChart();
+  restartTimer();
   if (el.value) ro.observe(el.value);
 });
 
 onUnmounted(() => {
+  if (sampleTimer) clearInterval(sampleTimer);
   ro.disconnect();
   chart?.destroy();
 });
