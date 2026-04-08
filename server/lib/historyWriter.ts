@@ -22,6 +22,7 @@ function tlBufKey(charId: number)    { return `hw:tlbuf:${charId}`; }
 
 interface BreakdownEntry {
   pilotName?: string | null;
+  targetName?: string | null;
   weaponType?: string | null;
   shipType?: string | null;
   category: string;
@@ -79,7 +80,7 @@ export async function write({
     const eventRows = snapshot.breakdown.map((b) => ({
       fleetSessionId,
       sourceCharacterId: characterId,
-      targetName:  b.pilotName ?? null,
+      targetName:  b.targetName ?? null,
       weaponType:  b.weaponType ?? null,
       shipType:    b.shipType ?? null,
       category:    b.category,

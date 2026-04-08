@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeFleetAggregate, type PilotSnapshot } from '../../lib/aggregate.js';
+import { computeFleetAggregate, computeWarAggregate, type PilotSnapshot, type MemberSnapshot } from '../../lib/aggregate.js';
 
 describe('computeFleetAggregate', () => {
   it('sums numeric fields across snapshots', () => {
@@ -42,5 +42,67 @@ describe('computeFleetAggregate', () => {
     const agg = computeFleetAggregate(snapshots);
     expect(agg.dpsOut).toBe(0);
     expect(agg.memberCount).toBe(2);
+  });
+
+  it('memberSnapshots contains all MemberSnapshot fields', () => {
+    const snapshots: PilotSnapshot[] = [
+      {
+        characterId: 42,
+        dpsOut: 100, dpsIn: 50,
+        logiOut: 20, logiIn: 10,
+        capTransfered: 5, capRecieved: 3,
+        capDamageOut: 80, capDamageIn: 40,
+        mined: 0,
+        shipTypeId: 12345,
+        solarSystemId: 30000142,
+        hitQualityDistribution: { 'Wrecks': 4, 'Grazes': 1 },
+        hitQualityDistributionIn: { 'Penetrates': 2 },
+      },
+    ];
+    const agg = computeFleetAggregate(snapshots);
+    const snap = agg.memberSnapshots[42] as MemberSnapshot;
+    expect(snap).toBeDefined();
+    expect(snap.dpsOut).toBe(100);
+    expect(snap.dpsIn).toBe(50);
+    expect(snap.logiOut).toBe(20);
+    expect(snap.logiIn).toBe(10);
+    expect(snap.capTransfered).toBe(5);
+    expect(snap.capRecieved).toBe(3);
+    expect(snap.capDamageOut).toBe(80);
+    expect(snap.capDamageIn).toBe(40);
+    expect(snap.mined).toBe(0);
+    expect(snap.shipTypeId).toBe(12345);
+    expect(snap.solarSystemId).toBe(30000142);
+    expect(snap.hitQualityDistribution).toEqual({ 'Wrecks': 4, 'Grazes': 1 });
+    expect(snap.hitQualityDistributionIn).toEqual({ 'Penetrates': 2 });
+  });
+});
+
+describe('computeWarAggregate', () => {
+  it('includes hitQualityDistributionIn merged from all fleets', () => {
+    const fleet1 = computeFleetAggregate([
+      { characterId: 1, hitQualityDistributionIn: { 'Wrecks': 3, 'Grazes': 1 } },
+    ]);
+    const fleet2 = computeFleetAggregate([
+      { characterId: 2, hitQualityDistributionIn: { 'Wrecks': 2, 'Penetrates': 5 } },
+    ]);
+    const war = computeWarAggregate([fleet1, fleet2]);
+    expect(war.hitQualityDistributionIn).toEqual({ 'Wrecks': 5, 'Grazes': 1, 'Penetrates': 5 });
+  });
+
+  it('merges memberSnapshots from all fleets', () => {
+    const fleet1 = computeFleetAggregate([
+      { characterId: 10, dpsOut: 200 },
+    ]);
+    const fleet2 = computeFleetAggregate([
+      { characterId: 20, dpsOut: 150 },
+    ]);
+    const war = computeWarAggregate([fleet1, fleet2]);
+    expect(war.memberSnapshots).toBeDefined();
+    const snaps = war.memberSnapshots as Record<number, MemberSnapshot>;
+    expect(snaps[10]).toBeDefined();
+    expect(snaps[10].dpsOut).toBe(200);
+    expect(snaps[20]).toBeDefined();
+    expect(snaps[20].dpsOut).toBe(150);
   });
 });
